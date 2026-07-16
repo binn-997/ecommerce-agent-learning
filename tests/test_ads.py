@@ -93,6 +93,14 @@ def test_ads_fatal_and_timeout_are_explicit() -> None:
     with pytest.raises(AdsReportFailed, match="FAILURE"):
         asyncio.run(fatal())
 
+    async def timeout() -> None:
+        transport = httpx.MockTransport(fatal_handler)
+        async with httpx.AsyncClient(transport=transport) as http:
+            await client(http).wait_for_report("ads-1", poll_interval=0, timeout=0)
+
+    with pytest.raises(TimeoutError, match="was not ready"):
+        asyncio.run(timeout())
+
 
 def test_low_exposure_and_attribution_delay_never_auto_execute() -> None:
     recommendation = explain_advertising_anomaly(
