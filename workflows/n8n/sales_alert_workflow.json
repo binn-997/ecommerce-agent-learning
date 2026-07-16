@@ -1,0 +1,12 @@
+{
+  "name": "amazon-ai-sales-alert-v1",
+  "nodes": [
+    {"id": "schedule", "name": "Schedule", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [0, 0], "parameters": {"rule": {"interval": [{"field": "hours", "hoursInterval": 6}]}}},
+    {"id": "sync", "name": "Call Core Sync API", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [260, 0], "parameters": {"method": "POST", "url": "={{$env.CORE_API_URL}}/v1/jobs/sales-sync", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "=Bearer {{$env.CORE_API_TOKEN}}"}]}}},
+    {"id": "failed", "name": "Escalate Error", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [520, 160], "parameters": {"method": "POST", "url": "={{$env.CORE_API_URL}}/v1/escalations", "sendBody": true, "jsonBody": "={\"workflow\":\"sales-alert-v1\",\"execution_id\":\"{{$execution.id}}\"}"}},
+    {"id": "approval", "name": "Wait For Human Approval", "type": "n8n-nodes-base.wait", "typeVersion": 1.1, "position": [520, -80], "parameters": {"resume": "webhook"}}
+  ],
+  "connections": {"Schedule": {"main": [[{"node": "Call Core Sync API", "type": "main", "index": 0}]]}, "Call Core Sync API": {"main": [[{"node": "Wait For Human Approval", "type": "main", "index": 0}]]}},
+  "settings": {"executionOrder": "v1", "saveDataErrorExecution": "all"},
+  "meta": {"version": "1.0.0", "boundary": "schedule/webhook/error/approval only; no business calculations"}
+}

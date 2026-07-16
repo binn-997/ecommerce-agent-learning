@@ -15,7 +15,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -31,6 +31,23 @@ class SPAPIError(RuntimeError):
 
 class ReportFailed(SPAPIError):
     pass
+
+
+class ReportCache(Protocol):
+    async def get(self, key: str) -> SalesAndTrafficReport | None: ...
+
+    async def set(self, key: str, value: SalesAndTrafficReport) -> None: ...
+
+
+class InMemoryReportCache:
+    def __init__(self) -> None:
+        self.values: dict[str, SalesAndTrafficReport] = {}
+
+    async def get(self, key: str) -> SalesAndTrafficReport | None:
+        return self.values.get(key)
+
+    async def set(self, key: str, value: SalesAndTrafficReport) -> None:
+        self.values[key] = value
 
 
 @dataclass
@@ -85,25 +102,30 @@ class AsyncSPAPIClient:
         client_secret: str,
         refresh_token: str,
         marketplace_id: str = "A1PA6795UKMFR9",
+        seller_id: str = "self",
         endpoint: str = "https://sellingpartnerapi-eu.amazon.com",
         http: httpx.AsyncClient | None = None,
         signer: Signer | None = None,
         max_attempts: int = 5,
         sleep: Callable[[float], Any] = asyncio.sleep,
+        report_cache: ReportCache | None = None,
     ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
         self.marketplace_id = marketplace_id
+        self.seller_id = seller_id
         self.endpoint = endpoint.rstrip("/")
         self.http = http or httpx.AsyncClient(timeout=httpx.Timeout(30, connect=10))
         self._owns_http = http is None
         self.signer = signer
         self.max_attempts = max_attempts
         self.sleep = sleep
+        self.report_cache = report_cache
         self._token = ""
         self._token_expiry = 0.0
         self._token_lock = asyncio.Lock()
+        self.retry_counts: dict[int, int] = {}
         self._buckets = {
             "reports": AsyncTokenBucket(rate=0.0167, capacity=15),
             "orders": AsyncTokenBucket(rate=0.0167, capacity=20),
@@ -134,8 +156,11 @@ class AsyncSPAPIClient:
             )
             if response.status_code >= 400:
                 raise SPAPIError("LWA token refresh failed", status_code=response.status_code)
-            payload = response.json()
-            self._token = str(payload["access_token"])
+            try:
+                payload = response.json()
+                self._token = str(payload["access_token"])
+            except (ValueError, KeyError, TypeError) as exc:
+                raise SPAPIError("LWA token refresh returned an invalid response") from exc
             self._token_expiry = time.monotonic() + int(payload.get("expires_in", 3600))
             return self._token
 
@@ -179,7 +204,7 @@ class AsyncSPAPIClient:
                 response = await self.http.request(
                     method, url, params=params, content=body, headers=headers
                 )
-            except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+            except httpx.TransportError as exc:
                 if attempt == self.max_attempts - 1:
                     raise SPAPIError(f"SP-API network failure: {type(exc).__name__}") from exc
                 await self.sleep(random.uniform(0, min(2 ** attempt, 30)))
@@ -196,6 +221,7 @@ class AsyncSPAPIClient:
             if response.status_code not in self.RETRYABLE or attempt == self.max_attempts - 1:
                 message = self._safe_error(response)
                 raise SPAPIError(message, status_code=response.status_code, request_id=request_id)
+            self.retry_counts[response.status_code] = self.retry_counts.get(response.status_code, 0) + 1
             await self.sleep(self._retry_after(response, attempt))
         raise AssertionError("retry loop must return or raise")
 
@@ -254,8 +280,11 @@ class AsyncSPAPIClient:
         metadata = await self.request(
             "GET", f"{self.REPORTS_PATH}/documents/{document_id}", operation="reports"
         )
-        download = await self.http.get(str(metadata["url"]))
-        download.raise_for_status()
+        try:
+            download = await self.http.get(str(metadata["url"]))
+            download.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise SPAPIError(f"report download failed: {type(exc).__name__}") from exc
         raw = download.content
         if metadata.get("compressionAlgorithm") == "GZIP":
             raw = gzip.decompress(raw)
@@ -264,8 +293,31 @@ class AsyncSPAPIClient:
     async def get_sales_and_traffic_report(
         self, start: date, end: date, *, poll_interval: float = 15, timeout: float = 600
     ) -> SalesAndTrafficReport:
+        cache_key = self.report_cache_key(start, end, asin_granularity="CHILD")
+        if self.report_cache and (cached := await self.report_cache.get(cache_key)):
+            return cached
         report_id = await self.create_sales_and_traffic_report(start, end)
         document_id = await self.wait_for_report(
             report_id, poll_interval=poll_interval, timeout=timeout
         )
-        return await self.download_report(document_id)
+        report = await self.download_report(document_id)
+        if self.report_cache:
+            await self.report_cache.set(cache_key, report)
+        return report
+
+    def report_cache_key(
+        self, start: date, end: date, *, asin_granularity: str
+    ) -> str:
+        options = json.dumps(
+            {"asinGranularity": asin_granularity, "dateGranularity": "DAY"},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return "|".join((
+            self.seller_id,
+            self.marketplace_id,
+            "GET_SALES_AND_TRAFFIC_REPORT",
+            start.isoformat(),
+            end.isoformat(),
+            options,
+        ))

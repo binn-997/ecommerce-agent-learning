@@ -285,3 +285,24 @@
 - **“MCP/飞书/CI/CD”**：对应周验收与可复现配置存在。
 
 月 GMV 3 万美元是运营经历；平台带来的效率或质量提升要单独 A/B 或前后对比，不能把既有 GMV 直接归因给尚未上线的平台。
+
+---
+
+## 当前实施状态（2026-07-16）
+
+| 周 | 可离线编程交付 | 证据 | 外部/人工验收状态 |
+|---|---|---|---|
+| 1 | 已实现 | `models.py`、`data_quality.py`；20 条质量规则、幂等/reconciliation 测试 | 需账号持有人用脱敏真实汇总复核 |
+| 2 | 已实现 | `spapi.py` 与 429×2→成功、20 并发单次刷新、GZIP、FATAL、缓存测试 | 需 sandbox/真实最小调用，之后才可写“实现 SP-API”简历动词 |
+| 3 | 已实现 | `pipeline.py`、`sql/init.sql`、Alembic；第 50 行回滚、重跑稳定、trace/request/hash 测试 | 需真实 PostgreSQL 压测/运行记录 |
+| 4 | 已实现 | Gateway adapter、Schema、fallback、熔断、并发、metrics 与安全 503 测试 | 需真实 Provider 受控故障演示 |
+| 5 | 已实现 | `prompts.py`、40 条 golden set、版本差异、硬规则零漏检测试 | 人工偏好需真实双盲标注替换 synthetic 标签 |
+| 6 | 已实现 | `rag.py`、50 条检索集、版本/时间/权限/引用/拒答评测 | 需接 pgvector/Qdrant 与真实规则文档 |
+| 7 | 已实现 | Listing 图、三版五点、来源、checkpoint、重试、人审 approve/reject/edit | 需持久化真实人审运行记录 |
+| 8 | 已实现 | 飞书 token/cache、webhook 验签、ack、Bitable upsert、去重通知、卡片人审 | 需飞书测试租户权限 smoke test |
+| 9 | 已实现 | Ads v3 报表与证据优先诊断；低样本/归因延迟/零分母保护 | 需 Ads profile 真实最小调用 |
+| 10 | 已实现 | 官方 MCP SDK 四工具、认证上下文、scope、trace、无写工具；版本化 n8n | Dify/Coze UI 为可选外部演示，不影响核心 API |
+| 11 | 已实现并完成本地容器验收 | 非 root、health、PostgreSQL/Redis/worker、SIGTERM draining、CI 扫描、OTel/metrics；见 `docs/docker-acceptance-2026-07-16.md` | 本地 Colima 四服务、事务、队列与优雅关闭已通过；生产压力/故障演练仍待外部环境 |
+| 12 | 已实现（代码/文档） | 离线 golden paths、3 ADR、威胁模型、容量成本、demo/答辩文档 | 视频、真实 before/after、全新 clone 计时和 Release tag 必须人工完成 |
+
+“已实现”仅表示仓库内离线代码与确定性测试完成，不等于真实账号联调或生产上线。

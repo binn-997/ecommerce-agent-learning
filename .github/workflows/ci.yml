@@ -14,6 +14,18 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: ruff check amazon_ai_platform tests
+      - run: ruff check amazon_ai_platform tests examples
       - run: pytest
       - run: python -m amazon_ai_platform.listing_agent > /tmp/listing-demo.json
+      - run: python -m examples.05_amazon_ads_client --demo
+      - run: python -m examples.06_rag_knowledge_base --demo
+      - run: pip-audit -r requirements.txt
+      - run: docker build -t amazon-ai-platform:test .
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: amazon-ai-platform:test
+          severity: CRITICAL,HIGH
+          exit-code: "1"

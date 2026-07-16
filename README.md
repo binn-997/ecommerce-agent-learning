@@ -4,7 +4,7 @@
 
 面向 Amazon 德国站的生产级 AI Agent 作品集。项目把简历中的真实经历——服装/宠物类目运营、月 GMV 3 万美元、Python 报表、飞书自动化、C++ 高并发后端——收敛为三条可以现场演示的业务链路，而不是一组互不相连的教程脚本。
 
-> 当前版本完成了可离线验证的核心骨架；真实账号联调、RAG 评测、MCP 和观测平台按 [12 周通关计划](LEARNING_PLAN.md) 逐周完成。README 只把已经有代码和测试的能力标记为完成，避免简历能力先于事实。
+> 当前版本已完成 12 周计划中可离线验证的编程交付；Amazon/Ads/飞书真实账号联调、演示视频、真实 before/after、Release tag 仍需由账号持有人执行。README 不把离线 mock 证据写成生产上线。
 
 ## 面试官可以看到什么
 
@@ -51,7 +51,7 @@ python -m examples.04_listing_agent
 python -m examples.05_amazon_ads_client --demo
 python -m examples.06_rag_knowledge_base --demo
 pytest
-ruff check amazon_ai_platform tests
+ruff check amazon_ai_platform tests examples
 ```
 
 启动网关：
@@ -87,15 +87,39 @@ curl http://127.0.0.1:8000/health
 
 | 模块 | 核心文件 | 已实现的工程细节 |
 |---|---|---|
-| Data Engine | `amazon_ai_platform/spapi.py` | `AsyncSPAPIClient`、LWA 双检锁刷新、操作级 Token Bucket、动态 rate header、全抖动退避、Sales & Traffic 报表 |
+| Data Contracts | `amazon_ai_platform/models.py`、`data_quality.py` | Sales/Order/Ads 原始层、标准层、指标层，20 条质量规则、幂等导入、0.5% reconciliation |
+| Data Engine | `amazon_ai_platform/spapi.py`、`pipeline.py` | `AsyncSPAPIClient`、窗口缓存、事务 raw/upsert/cursor、回滚、request ID/文件哈希 trace |
+| Ads Engine | `amazon_ai_platform/ads.py` | Reporting v3 create/poll/GZIP、ACOS/CTR/CVR/CPC/TACOS、低样本与 14 天归因保护、只生成待审建议 |
 | Business Hub | `amazon_ai_platform/feishu.py` | token 缓存、卡片纯函数、Bitable search + update/create 幂等写、订单同步、事件验签 token、选品指令 |
 | Brain Gateway | `amazon_ai_platform/llm_gateway.py` | 标准接口、多 Provider Adapter、fallback、circuit breaker、并发闸门、注册 Schema + Pydantic 二次校验 |
-| Decision Engine | `amazon_ai_platform/listing_agent.py` | 三节点显式图、三版五点、来源 ID、德国站规则、GPSR 元数据提醒、人工接管 |
-| Business Contracts | `amazon_ai_platform/models.py` | SP-API、Listing、订单、告警的统一 Pydantic 模型 |
-| Persistence | `sql/init.sql` | SKU、订单、日指标、告警表及幂等约束 |
-| Tests | `tests/` | 报表全链路、429、Bitable upsert、模型降级、非法 JSON、Agent 输出与合规规则 |
+| Prompt/RAG | `amazon_ai_platform/prompts.py`、`rag.py` | Prompt 版本/Schema、40 条跨类目评测、版本/生效时间/权限检索、50 条检索与拒答评测、引用 |
+| Decision Engine | `amazon_ai_platform/listing_agent.py` | 三节点图、三版五点、事实来源、重试、checkpoint、德国站规则、approve/reject/edit 人审记录 |
+| MCP | `amazon_ai_platform/mcp_server.py` | 官方 SDK 四个最小工具；seller/marketplace 由认证上下文注入，无发布/改价/广告写工具 |
+| Runtime | `business_api.py`、`worker.py`、`telemetry.py` | 飞书 webhook、Redis worker SIGTERM draining、OpenTelemetry trace、Prometheus 格式网关指标 |
+| Persistence | `sql/init.sql`、`alembic/` | raw、标准指标、Ads、游标、告警、审计、人审表及 Alembic migration |
+| Tests | `tests/` | 全离线确定性测试；429、超时、FATAL、事务回滚、非法 JSON、权限、过期规则与 HITL |
 
-四个核心模块的实现均超过 100 行；示例文件只是薄入口，核心逻辑可被服务、任务和测试共同复用。
+示例文件只是薄入口，核心逻辑位于生产包，可被 API、worker、MCP 和测试共同复用。
+
+## 离线验收证据
+
+```bash
+source .venv/bin/activate
+pytest
+ruff check amazon_ai_platform tests examples
+python -m examples.01_spapi_client
+python -m examples.04_listing_agent
+python -m examples.05_amazon_ads_client --demo
+python -m examples.06_rag_knowledge_base --demo
+alembic upgrade head --sql > /tmp/amazon-ai-migration.sql
+docker compose config --quiet
+```
+
+固定评测资产位于 `tests/fixtures/`：Listing 40 条（西服 20、宠物 20），RAG 50 条（拒答 15）。低代码 workflow 位于 `workflows/`，只做调度、webhook、错误升级与人工等待。
+
+真实账号验收必须另行记录：SP-API/Ads sandbox request ID、飞书测试表记录、权限 smoke test、视频、真实聚合 before/after 和 Release tag。没有这些证据时只能表述为“离线实现并通过 mock 验收”。
+
+Docker 四服务运行验收已于 2026-07-16 在本地 Colima 完成，包括 health、非 root、数据库初始化/回滚、Redis 队列消费、安全 503 和 SIGTERM draining；详见 `docs/docker-acceptance-2026-07-16.md`。验收后已执行普通 `docker compose down`，保留命名卷。
 
 ## 设计选择
 

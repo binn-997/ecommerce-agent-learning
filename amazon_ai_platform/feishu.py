@@ -33,6 +33,7 @@ class FeishuCommand:
 
 class FeishuBusinessHub:
     BASE_URL = "https://open.feishu.cn/open-apis"
+    TOKEN_ERROR_CODES = {99991663, 99991668}
 
     def __init__(
         self,
@@ -50,6 +51,7 @@ class FeishuBusinessHub:
         self._token = ""
         self._token_expiry = 0.0
         self._token_lock = asyncio.Lock()
+        self._notification_state: dict[str, tuple[str, str]] = {}
 
     async def __aenter__(self) -> "FeishuBusinessHub":
         return self
@@ -64,12 +66,15 @@ class FeishuBusinessHub:
         async with self._token_lock:
             if self._token and time.monotonic() < self._token_expiry - 60:
                 return self._token
-            response = await self.http.post(
-                f"{self.BASE_URL}/auth/v3/tenant_access_token/internal",
-                json={"app_id": self.app_id, "app_secret": self.app_secret},
-            )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response = await self.http.post(
+                    f"{self.BASE_URL}/auth/v3/tenant_access_token/internal",
+                    json={"app_id": self.app_id, "app_secret": self.app_secret},
+                )
+                response.raise_for_status()
+                data = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise FeishuError("Feishu tenant token transport/JSON failure") from exc
             self._ensure_success(data, "tenant token")
             self._token = str(data["tenant_access_token"])
             self._token_expiry = time.monotonic() + int(data.get("expire", 7200))
@@ -80,6 +85,36 @@ class FeishuBusinessHub:
             "Authorization": f"Bearer {await self.tenant_token()}",
             "Content-Type": "application/json; charset=utf-8",
         }
+
+    async def _call(
+        self,
+        method: str,
+        url: str,
+        *,
+        operation: str,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        for attempt in range(2):
+            try:
+                response = await self.http.request(
+                    method,
+                    url,
+                    params=params,
+                    headers=await self._headers(),
+                    json=json_body,
+                )
+                response.raise_for_status()
+                data = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise FeishuError(f"Feishu {operation} transport/JSON failure") from exc
+            if data.get("code") in self.TOKEN_ERROR_CODES and attempt == 0:
+                self._token = ""
+                self._token_expiry = 0
+                continue
+            self._ensure_success(data, operation)
+            return data
+        raise AssertionError("Feishu token retry must return or raise")
 
     @staticmethod
     def _ensure_success(payload: dict[str, Any], operation: str) -> None:
@@ -118,34 +153,40 @@ class FeishuBusinessHub:
                 {"tag": "div", "text": {"tag": "lark_md", "content": f"**触发原因**\n{alert.reason}"}},
                 {
                     "tag": "note",
-                    "elements": [{"tag": "plain_text", "content": f"事件键 {alert.source_key} · 建议仅供参考，动作需人工审批"}],
+                    "elements": [{"tag": "plain_text", "content": f"来源/trace {alert.source_key} · 时间范围 {alert.metric_date} · 指标为代码计算；置信限制见触发原因；动作需人工审批"}],
+                },
+                {
+                    "tag": "action",
+                    "actions": [
+                        {"tag": "button", "text": {"tag": "plain_text", "content": "人工确认"}, "type": "primary", "value": {"action": "approve", "source_key": alert.source_key}},
+                        {"tag": "button", "text": {"tag": "plain_text", "content": "驳回/补充证据"}, "type": "default", "value": {"action": "reject", "source_key": alert.source_key}},
+                    ],
                 },
             ],
         }
 
     async def send_card(self, chat_id: str, card: dict[str, Any]) -> str:
-        response = await self.http.post(
+        data = await self._call(
+            "POST",
             f"{self.BASE_URL}/im/v1/messages",
+            operation="send card",
             params={"receive_id_type": "chat_id"},
-            headers=await self._headers(),
-            json={
+            json_body={
                 "receive_id": chat_id,
                 "msg_type": "interactive",
                 "content": json.dumps(card, ensure_ascii=False),
             },
         )
-        response.raise_for_status()
-        data = response.json()
-        self._ensure_success(data, "send card")
         return str(data.get("data", {}).get("message_id", ""))
 
     async def _search_record(
         self, app_token: str, table_id: str, field_name: str, value: str
     ) -> str | None:
-        response = await self.http.post(
+        data = await self._call(
+            "POST",
             f"{self.BASE_URL}/bitable/v1/apps/{app_token}/tables/{table_id}/records/search",
-            headers=await self._headers(),
-            json={
+            operation="search Bitable record",
+            json_body={
                 "filter": {
                     "conjunction": "and",
                     "conditions": [
@@ -155,9 +196,6 @@ class FeishuBusinessHub:
                 "page_size": 1,
             },
         )
-        response.raise_for_status()
-        data = response.json()
-        self._ensure_success(data, "search Bitable record")
         items = data.get("data", {}).get("items", [])
         return str(items[0]["record_id"]) if items else None
 
@@ -175,15 +213,12 @@ class FeishuBusinessHub:
         )
         base = f"{self.BASE_URL}/bitable/v1/apps/{app_token}/tables/{table_id}/records"
         method, url = ("PUT", f"{base}/{record_id}") if record_id else ("POST", base)
-        response = await self.http.request(
+        data = await self._call(
             method,
             url,
-            headers=await self._headers(),
-            json={"fields": {**fields, idempotency_field: idempotency_value}},
+            operation="upsert Bitable record",
+            json_body={"fields": {**fields, idempotency_field: idempotency_value}},
         )
-        response.raise_for_status()
-        data = response.json()
-        self._ensure_success(data, "upsert Bitable record")
         return str(data.get("data", {}).get("record", {}).get("record_id", record_id or ""))
 
     async def sync_order(self, app_token: str, table_id: str, order: OrderSnapshot) -> str:
@@ -220,7 +255,12 @@ class FeishuBusinessHub:
                 "状态": "待人工处理",
             },
         )
+        severity = "critical" if alert.days_of_cover <= 7 else "warning" if alert.change_ratio <= -0.2 else "info"
+        state = (severity, "待人工处理")
+        if self._notification_state.get(alert.source_key) == state:
+            return record_id, ""
         message_id = await self.send_card(chat_id, self.sales_alert_card(alert))
+        self._notification_state[alert.source_key] = state
         return record_id, message_id
 
     def parse_command(self, event: dict[str, Any]) -> FeishuCommand | None:
@@ -259,7 +299,21 @@ class FeishuBusinessHub:
         if command.name not in {"选品", "product"} or not command.argument:
             await self.send_card(command.chat_id, self._help_card())
             return {"ok": True, "command": "help"}
-        result = await analyzer.analyze(command.argument, operator_id=command.operator_id)
+        try:
+            await asyncio.wait_for(
+                self.send_card(command.chat_id, self._ack_card(command.argument)),
+                timeout=4,
+            )
+        except asyncio.TimeoutError:
+            return {"ok": False, "command": "product", "error": "ack_timeout"}
+        try:
+            result = await asyncio.wait_for(
+                analyzer.analyze(command.argument, operator_id=command.operator_id),
+                timeout=25,
+            )
+        except asyncio.TimeoutError:
+            await self.send_card(command.chat_id, self._timeout_card())
+            return {"ok": False, "command": "product", "error": "analysis_timeout"}
         await self.send_card(command.chat_id, self._analysis_card(command.argument, result))
         return {"ok": True, "command": "product", "trace_id": result.get("trace_id")}
 
@@ -271,6 +325,20 @@ class FeishuBusinessHub:
         }
 
     @staticmethod
+    def _ack_card(query: str) -> dict[str, Any]:
+        return {
+            "header": {"template": "blue", "title": {"tag": "plain_text", "content": "已接收选品分析"}},
+            "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": f"正在读取只读数据：`{query[:80]}`。完成后将发送带 trace 的待审核结果。"}}],
+        }
+
+    @staticmethod
+    def _timeout_card() -> dict[str, Any]:
+        return {
+            "header": {"template": "orange", "title": {"tag": "plain_text", "content": "分析暂未完成"}},
+            "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "上游只读分析超时，未执行任何业务写操作。请稍后重试。"}}],
+        }
+
+    @staticmethod
     def _analysis_card(query: str, result: dict[str, Any]) -> dict[str, Any]:
         summary = str(result.get("summary", "暂无结论"))[:3000]
         trace_id = str(result.get("trace_id", "unknown"))
@@ -279,5 +347,23 @@ class FeishuBusinessHub:
             "elements": [
                 {"tag": "div", "text": {"tag": "lark_md", "content": summary}},
                 {"tag": "note", "elements": [{"tag": "plain_text", "content": f"trace_id={trace_id} · 数据有时效性，决策需人工审批"}]},
+            ],
+        }
+
+    @staticmethod
+    def advertising_recommendation_card(recommendation: Any) -> dict[str, Any]:
+        hypotheses = "\n".join(
+            f"- {item.hypothesis}: {item.score:.0%}" for item in recommendation.hypotheses
+        )
+        return {
+            "header": {"template": "orange", "title": {"tag": "plain_text", "content": "Amazon Ads 异常解释（待人工审核）"}},
+            "elements": [
+                {"tag": "div", "fields": [
+                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**Campaign**\n{recommendation.campaign_id}"}},
+                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**日期**\n{recommendation.window_start} / {recommendation.window_end}"}},
+                    {"is_short": True, "text": {"tag": "lark_md", "content": f"**原始报表**\n{recommendation.report_id}"}},
+                ]},
+                {"tag": "div", "text": {"tag": "lark_md", "content": f"**结论限制**\n{recommendation.conclusion}\n\n**假设与证据评分**\n{hypotheses}"}},
+                {"tag": "note", "elements": [{"tag": "plain_text", "content": f"观察 {recommendation.observation_window_days} 天；不自动调整 bid/budget；动作需人工审批"}]},
             ],
         }
