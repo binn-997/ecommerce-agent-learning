@@ -1,0 +1,207 @@
+\documentclass[10pt, a4paper]{article}
+
+% ---- Packages ----
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\usepackage[
+  top=1.0cm, bottom=0.8cm,
+  left=1.5cm, right=1.5cm
+]{geometry}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage[table]{xcolor}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{multirow}
+
+% ---- Font settings (Configured for macOS, using substitutes for sandbox compilation) ----
+% In sandbox, we use Noto/WenQuanYi. For your Mac, these settings are ready.
+\setmainfont{lmroman10-regular.otf}[
+  BoldFont       = lmroman10-bold.otf,
+  ItalicFont     = lmroman10-italic.otf,
+  BoldItalicFont = lmroman10-bolditalic.otf
+]
+\setCJKmainfont{Songti SC}[
+  BoldFont       = STSongti-SC-Bold,
+  ItalicFont     = Songti SC,
+  BoldItalicFont = STSongti-SC-Bold
+]
+\setCJKsansfont{PingFang SC}
+\setCJKmonofont{Menlo}
+
+% ---- Hyperref setup ----
+\hypersetup{colorlinks=true, urlcolor=black, linkcolor=black, pdfborder={0 0 0}}
+
+% ---- Section title: 12pt bold underlined ----
+\titleformat{\section}
+  {\fontsize{11}{13}\selectfont\bfseries}
+  {}{0em}{\underline}
+\titlespacing{\section}{0pt}{3pt}{0pt}
+
+% ---- Spacing ----
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2pt}
+
+% ---- List settings ----
+\setlist[itemize]{
+  leftmargin=1.0em,
+  itemsep=0pt,
+  parsep=0pt,
+  topsep=0pt,
+  label=\textbullet
+}
+
+\begin{document}
+\setstretch{1.08}
+
+% ========== HEADER ==========
+\begin{center}
+  {\fontsize{20}{24}\selectfont\bfseries 陈培钿}\\[4pt]
+  {\fontsize{10}{12}\selectfont
+    深圳 \quad\textbar\quad
+    电话：15322554993 \quad\textbar\quad
+    邮箱：peitianchen2026@163.com
+  }
+\end{center}
+
+\vspace{2pt}
+\noindent\rule{\textwidth}{0.4pt}
+\vspace{1pt}
+
+% ========== OBJECTIVE ==========
+\section{职业目标}
+
+{\fontsize{9}{12}\selectfont
+具备\textbf{计算机专业背景}的复合型跨境电商人才。致力于通过 AI 智能体（Agent）、自动化工作流与数据驱动运营实现跨境业务的降本增效。拥有亚马逊德国站实战运营经验与全栈 AI 开发能力，擅长将技术落地为可量化的业务 GMV 增长。
+}
+
+\vspace{1pt}
+
+% ========== SKILLS ==========
+\section{核心技能}
+
+{\fontsize{9}{12}\selectfont
+\begin{tabular}{@{}p{2.6cm} p{13.8cm}@{}}
+\textbf{编程与开发} &
+  Python、C++、FastAPI、SQL、Docker、GitHub Actions CI/CD、QT 框架 \\[1.5pt]
+\textbf{AI \& 大模型} &
+  ChatGPT、Claude、DeepSeek、Gemini；Prompt Engineering、Function Calling、Structured Output \\[1.5pt]
+\textbf{Agent \& 自动化} &
+  LangChain/LangGraph 多 Agent 编排；n8n/Dify 工作流；飞书 API 集成；MCP Server 开发；RAG（Chroma） \\[1.5pt]
+\textbf{跨境业务} &
+  Amazon SP-API 集成；德国站运营；选品与 Listing 优化；广告投放（CPC/PPC）；ERP 对接 \\[1.5pt]
+\end{tabular}
+}
+
+\vspace{1pt}
+
+% ========== 工作经历 ==========
+\section{工作经历}
+
+\noindent
+\begin{tabularx}{\textwidth}{@{}X r@{}}
+{\fontsize{10}{12}\selectfont\textbf{亚马逊运营（德国站点）\& 自动化工具开发}} &
+{\fontsize{10}{12}\selectfont 2025年11月 -- 2026年7月}
+\end{tabularx}
+
+\noindent{\fontsize{10}{12}\selectfont\textit{亚马逊运营专员}} \hfill {\fontsize{10}{12}\selectfont\textit{深圳市蔚蓝思科技有限公司}}
+
+\vspace{1pt}
+{\fontsize{9}{12}\selectfont
+负责亚马逊德国站（DE）服装（西服）及宠物地毯类目整体运营，利用计算机技术背景自研自动化工具，推动店铺月度 GMV 突破 30,000 USD。
+}
+
+\begin{itemize}
+  \item {\fontsize{9}{12}\selectfont\textbf{店铺运营与爆款打造：}独立运营德国站服装（西服）及宠物地毯类目，完成标题、关键词、五点描述与 A+ 页面优化，退款率控制在 4\% 以内；搭建广告推广方案并持续优化关键词与竞价，西服品类月销突破 15,000 USD。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{数据报表自动化：}基于 Python 自动处理亚马逊销售、库存与广告报告，生成多维度结构化运营报表与可视化图表，替代人工 Excel 整理，大幅提升数据处理效率。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{飞书自动化与 AI 集成：}搭建飞书多维表格、审批流与消息机器人，通过 OpenAPI 与 ERP 完成数据双向同步；调用 DeepSeek API 自动生成结构化日报并推送至运营群组。}
+
+\end{itemize}
+
+\vspace{2pt}
+% Performance Table
+{\fontsize{8}{10}\selectfont
+\begin{tabularx}{\textwidth}{|l|c|c|c|X|}
+\hline
+\rowcolor{gray!10} \textbf{运营阶段} & \textbf{GMV (USD)} & \textbf{ROI / ACOS} & \textbf{转化率 (CVR)} & \textbf{关键业绩动作} \\ \hline
+初期 (3月) & 5,000+ & 25\% (ACOS) & 8.5\% & 基础 Listing 优化与数据报表体系搭建 \\ \hline
+增长期 (4-5月) & 18,000+ & 18\% (ACOS) & 12.4\% & 宠物地毯类目爆款打造，AI 辅助广告词精准拓词 \\ \hline
+\textbf{成熟期 (6月)} & \textbf{32,500+} & \textbf{8\% (ACOS)} & \textbf{15.8\%} & \textbf{西服品类月销突破 1.5w USD，自动化工作流全面提效} \\ \hline
+\end{tabularx}
+}
+
+\vspace{2pt}
+
+% --- Project 2 ---
+\noindent
+\begin{tabularx}{\textwidth}{@{}X r@{}}
+{\fontsize{10}{12}\selectfont\textbf{高并发游戏服务器研发（实习）}} &
+{\fontsize{10}{12}\selectfont 2025年3月 -- 2025年7月}
+\end{tabularx}
+
+\noindent{\fontsize{10}{12}\selectfont\textit{游戏服务器开发工程师（实习）}} \hfill {\fontsize{10}{12}\selectfont\textit{广州}}
+
+\vspace{1pt}
+{\fontsize{9}{12}\selectfont
+参与游戏后端服务器架构设计与开发，基于 C++ 与 epoll 实现高并发 TCP 通信模块，采用 Reactor 模式处理网络 IO，通过多线程架构支撑数千并发连接，完成玩家匹配、房间管理与实时状态同步等核心玩法逻辑。
+}
+
+\vspace{2pt}
+
+% ========== 项目经历 ==========
+\section{项目经历}
+
+% --- Project 1 ---
+\noindent
+\begin{tabularx}{\textwidth}{@{}X r@{}}
+{\fontsize{10}{12}\selectfont\textbf{Amazon AI Platform——跨境电商全栈 AI 智能平台（个人实战项目）}} &
+% {\fontsize{10}{12}\selectfont 2026年1月 -- 2026年7月}
+\end{tabularx}
+
+% \noindent{\fontsize{10}{12}\selectfont\textit{全栈 AI 工程师 / 系统架构师}} \hfill {\fontsize{10}{12}\selectfont\textit{深圳}}
+
+\vspace{1pt}
+{\fontsize{9}{12}\selectfont
+独立设计并开发基于 Amazon SP-API 与多模型的跨境电商智能平台，涵盖 Listing 生成、关键词分析、智能客服、广告分析等模块，实现从数据采集到业务落地的全链路自动化。
+}
+
+\begin{itemize}
+  \item {\fontsize{9}{12}\selectfont\textbf{数据底座建设：}基于 Python 封装 Amazon SP-API SDK，实现订单、库存、广告、报表等数据自动化拉取；解决 OAuth 2.0 授权、Rate Limiting 令牌桶及 429 指数退避重试等工程难点。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{LLM Gateway 开发：}基于 FastAPI 构建多模型统一接入网关，封装 Claude、GPT-4、DeepSeek、Gemini 等 API，支持流式与结构化 JSON 输出，降低业务侧多模型调用成本。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{Listing 生成 Agent：}结合竞品 ASIN 数据，利用 LangGraph 编排多节点 Agent 工作流（竞品分析 $\rightarrow$ 标题生成 $\rightarrow$ 违规检测 $\rightarrow$ 自动重写），生成符合亚马逊规范的标题与五点描述。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{RAG 知识库与智能客服：}基于 Dify 搭建 Amazon SOP 知识库（Chroma 向量库），构建智能客服 Agent，实现客户咨询自动响应与 SP-API 订单状态实时查询。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{广告报表自动化：}使用 n8n 搭建定时工作流，自动拉取 SP-API 广告报表，调用 Claude API 进行趋势分析与优化建议，结果通过飞书机器人推送，实现广告数据日报零人工干预。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{MCP Server 与工程部署：}基于 MCP 协议开发 Amazon MCP Server，将 SP-API 封装为标准化 Tool 供 Claude Code 调用；Docker Compose 容器化编排，GitHub Actions CI/CD 自动化测试与部署。}
+\end{itemize}
+
+\vspace{1pt}
+
+
+% ========== EDUCATION ==========
+\section{教育背景}
+
+\noindent
+\begin{tabularx}{\textwidth}{@{}X r@{}}
+{\fontsize{10}{12}\selectfont\textbf{仲恺农业工程学院}} &
+{\fontsize{10}{12}\selectfont 2021年9月 -- 2025年6月}
+\end{tabularx}
+
+\noindent{\fontsize{10}{12}\selectfont\textit{计算机科学与技术，学士学位}} \hfill {\fontsize{10}{12}\selectfont\textit{广州}}
+
+\vspace{1pt}
+\begin{itemize}
+  \item {\fontsize{9}{12}\selectfont 英语水平：CET-4}
+\end{itemize}
+
+\end{document}

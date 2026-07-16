@@ -1,0 +1,93 @@
+{
+    // =========================
+    // Editor
+    // =========================
+    "files.encoding": "utf8",
+    "files.autoSave": "off",
+
+    // =========================
+    // LaTeX Build
+    // =========================
+    "latex-workshop.latex.autoBuild.run": "onSave",
+
+    // 忽略 %!TEX program，始终使用 Recipe
+    "latex-workshop.latex.build.enableMagicComments": false,
+
+    // 编译输出目录
+    "latex-workshop.latex.outDir": "./build",
+
+    // 默认使用第一个 Recipe
+    "latex-workshop.latex.recipe.default": "first",
+
+    // =========================
+    // Recipe
+    // =========================
+    "latex-workshop.latex.recipes": [
+        {
+            "name": "latexmk (XeLaTeX)",
+            "tools": [
+                "latexmk"
+            ]
+        }
+    ],
+
+    // =========================
+    // Tool
+    // =========================
+    "latex-workshop.latex.tools": [
+        {
+            "name": "latexmk",
+            "command": "latexmk",
+            "args": [
+                "-xelatex",
+                "-synctex=1",
+                "-interaction=nonstopmode",
+                "-file-line-error",
+                "-outdir=%OUTDIR%",
+                "%DOC%"
+            ]
+        }
+    ],
+
+    // =========================
+    // PDF Viewer
+    // =========================
+    "latex-workshop.view.pdf.viewer": "tab",
+    "latex-workshop.synctex.afterBuild.enabled": true,
+
+    // =========================
+    // Clean
+    // =========================
+    "latex-workshop.latex.autoClean.run": "never",
+
+    "latex-workshop.latex.clean.fileTypes": [
+        "*.aux",
+        "*.bbl",
+        "*.bcf",
+        "*.blg",
+        "*.fdb_latexmk",
+        "*.fls",
+        "*.idx",
+        "*.ind",
+        "*.lof",
+        "*.log",
+        "*.lot",
+        "*.out",
+        "*.run.xml",
+        "*.synctex.gz",
+        "*.toc",
+        "*.xdv"
+    ],
+
+    // =========================
+    // IntelliSense
+    // =========================
+    "latex-workshop.intellisense.package.enabled": true,
+
+    // =========================
+    // Root file
+    // =========================
+    "latex-workshop.latex.search.rootFiles.include": [
+        "*.tex"
+    ]
+}
