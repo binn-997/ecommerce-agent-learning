@@ -9,14 +9,19 @@ import time
 import uuid
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from .models import ListingVariant
+from .telemetry import configure_telemetry
+
+
+TRACER = configure_telemetry("amazon-ai-llm-gateway")
 
 
 class GatewayError(RuntimeError):
@@ -25,6 +30,35 @@ class GatewayError(RuntimeError):
 
 class ProviderUnavailable(GatewayError):
     pass
+
+
+class ProviderEscalation(GatewayError):
+    """Authentication, authorization and quota errors require human intervention."""
+
+
+@dataclass
+class GatewayMetrics:
+    requests: int = 0
+    provider_failures: int = 0
+    fallbacks: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    estimated_cost_usd: float = 0
+    latencies_ms: list[int] = field(default_factory=list)
+
+    def prometheus(self) -> str:
+        ordered = sorted(self.latencies_ms)
+        p95 = ordered[max(0, int(len(ordered) * 0.95) - 1)] if ordered else 0
+        values = {
+            "amazon_ai_gateway_requests_total": self.requests,
+            "amazon_ai_gateway_provider_failures_total": self.provider_failures,
+            "amazon_ai_gateway_fallbacks_total": self.fallbacks,
+            "amazon_ai_gateway_prompt_tokens_total": self.prompt_tokens,
+            "amazon_ai_gateway_completion_tokens_total": self.completion_tokens,
+            "amazon_ai_gateway_estimated_cost_usd_total": round(self.estimated_cost_usd, 8),
+            "amazon_ai_gateway_latency_p95_ms": p95,
+        }
+        return "\n".join(f"# TYPE {name} gauge\n{name} {value}" for name, value in values.items()) + "\n"
 
 
 class Message(BaseModel):
@@ -127,11 +161,16 @@ class AnthropicProvider:
                 "max_tokens": request.max_tokens,
             },
         )
+        if response.status_code in {401, 402, 403, 429}:
+            raise ProviderEscalation(f"Anthropic requires operator review (HTTP {response.status_code})")
         if response.status_code >= 400:
             raise ProviderUnavailable(f"Anthropic HTTP {response.status_code}")
-        body = response.json()
-        text_blocks = [part.get("text", "") for part in body.get("content", []) if part.get("type") == "text"]
-        usage = body.get("usage", {})
+        try:
+            body = response.json()
+            text_blocks = [part.get("text", "") for part in body.get("content", []) if part.get("type") == "text"]
+            usage = body.get("usage", {})
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise ProviderUnavailable("Anthropic returned an invalid response") from exc
         return ProviderResult(
             content="".join(text_blocks),
             model=str(body.get("model", model)),
@@ -163,16 +202,23 @@ class OpenAICompatibleProvider:
             headers={"Authorization": f"Bearer {self.api_key}"},
             json=payload,
         )
+        if response.status_code in {401, 402, 403, 429}:
+            raise ProviderEscalation(
+                f"{self.name} requires operator review (HTTP {response.status_code})"
+            )
         if response.status_code >= 400:
             raise ProviderUnavailable(f"{self.name} HTTP {response.status_code}")
-        body = response.json()
-        usage = body.get("usage", {})
-        return ProviderResult(
-            content=str(body["choices"][0]["message"].get("content", "")),
-            model=str(body.get("model", model)),
-            prompt_tokens=int(usage.get("prompt_tokens", 0)),
-            completion_tokens=int(usage.get("completion_tokens", 0)),
-        )
+        try:
+            body = response.json()
+            usage = body.get("usage", {})
+            return ProviderResult(
+                content=str(body["choices"][0]["message"].get("content", "")),
+                model=str(body.get("model", model)),
+                prompt_tokens=int(usage.get("prompt_tokens", 0)),
+                completion_tokens=int(usage.get("completion_tokens", 0)),
+            )
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+            raise ProviderUnavailable(f"{self.name} returned an invalid response") from exc
 
 
 @dataclass
@@ -197,12 +243,18 @@ class ModelRouter:
         max_concurrency: int = 50,
         failure_threshold: int = 3,
         recovery_seconds: float = 30,
+        metrics: GatewayMetrics | None = None,
+        input_cost_per_million: float = 0,
+        output_cost_per_million: float = 0,
     ) -> None:
         self.routes = routes
         self.semaphore = asyncio.Semaphore(max_concurrency)
         self.failure_threshold = failure_threshold
         self.recovery_seconds = recovery_seconds
         self.circuits: dict[str, CircuitState] = {}
+        self.metrics = metrics or GatewayMetrics()
+        self.input_cost_per_million = input_cost_per_million
+        self.output_cost_per_million = output_cost_per_million
 
     def _available(self, provider_name: str) -> bool:
         state = self.circuits.setdefault(provider_name, CircuitState())
@@ -245,8 +297,10 @@ class ModelRouter:
         self, request: ChatCompletionRequest
     ) -> tuple[ProviderResult, str, int]:
         targets = self.routes.get(request.model)
-        if not targets:
+        if targets is None:
             raise GatewayError(f"unknown model alias: {request.model}")
+        if not targets:
+            raise ProviderUnavailable(f"no providers configured for alias: {request.model}")
         failures: list[str] = []
         async with self.semaphore:
             for fallback_count, target in enumerate(targets):
@@ -259,14 +313,25 @@ class ModelRouter:
                     )
                     validated = self._validate(result.content, request)
                     self._record_success(target.provider.name)
+                    self.metrics.fallbacks += fallback_count
+                    self.metrics.prompt_tokens += result.prompt_tokens
+                    self.metrics.completion_tokens += result.completion_tokens
+                    self.metrics.estimated_cost_usd += (
+                        result.prompt_tokens * self.input_cost_per_million
+                        + result.completion_tokens * self.output_cost_per_million
+                    ) / 1_000_000
                     return ProviderResult(
                         content=validated,
                         model=result.model,
                         prompt_tokens=result.prompt_tokens,
                         completion_tokens=result.completion_tokens,
                     ), target.provider.name, fallback_count
+                except ProviderEscalation:
+                    self.metrics.provider_failures += 1
+                    raise
                 except (ProviderUnavailable, httpx.HTTPError, asyncio.TimeoutError) as exc:
                     self._record_failure(target.provider.name)
+                    self.metrics.provider_failures += 1
                     failures.append(f"{target.provider.name}: {str(exc)[:120]}")
         raise ProviderUnavailable("all providers failed; " + "; ".join(failures))
 
@@ -296,19 +361,33 @@ def create_app(router: ModelRouter) -> FastAPI:
     async def health() -> dict[str, Any]:
         return {"status": "ok", "routes": sorted(router.routes)}
 
+    @app.get("/metrics", response_class=PlainTextResponse)
+    async def metrics() -> PlainTextResponse:
+        return PlainTextResponse(router.metrics.prometheus())
+
     @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
     async def chat_completion(payload: ChatCompletionRequest, raw_request: Request) -> ChatCompletionResponse:
-        request_id = raw_request.headers.get("x-request-id", str(uuid.uuid4()))
+        supplied_id = raw_request.headers.get("x-request-id", "")[:128]
+        request_id = supplied_id if supplied_id.replace("-", "").replace("_", "").isalnum() else str(uuid.uuid4())
         started = time.perf_counter()
-        try:
-            result, provider, fallback_count = await router.complete(payload)
-        except GatewayError as exc:
-            status = 400 if "unknown model" in str(exc) else 503
-            raise HTTPException(
-                status_code=status,
-                detail={"code": "model_unavailable", "request_id": request_id},
-            ) from exc
+        router.metrics.requests += 1
+        with TRACER.start_as_current_span("chat_completion") as span:
+            span.set_attribute("request.id", request_id)
+            span.set_attribute("model.alias", payload.model)
+            try:
+                result, provider, fallback_count = await router.complete(payload)
+            except (GatewayError, ProviderEscalation) as exc:
+                span.set_attribute("outcome", "failed")
+                status = 400 if "unknown model" in str(exc) else 503
+                raise HTTPException(
+                    status_code=status,
+                    detail={"code": "model_unavailable", "request_id": request_id},
+                ) from exc
+            span.set_attribute("provider", provider)
+            span.set_attribute("fallback.count", fallback_count)
         total = result.prompt_tokens + result.completion_tokens
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        router.metrics.latencies_ms.append(latency_ms)
         return ChatCompletionResponse(
             id=f"chatcmpl-{request_id}",
             created=int(time.time()),
@@ -320,7 +399,7 @@ def create_app(router: ModelRouter) -> FastAPI:
                 completion_tokens=result.completion_tokens,
                 total_tokens=total,
             ),
-            latency_ms=int((time.perf_counter() - started) * 1000),
+            latency_ms=latency_ms,
             fallback_count=fallback_count,
         )
 
@@ -336,7 +415,11 @@ def app_from_environment() -> FastAPI:
         targets.append(RouteTarget(OpenAICompatibleProvider("deepseek", key, "https://api.deepseek.com", http), os.getenv("DEEPSEEK_MODEL", "deepseek-chat")))
     if key := os.getenv("OPENAI_API_KEY"):
         targets.append(RouteTarget(OpenAICompatibleProvider("openai", key, "https://api.openai.com/v1", http), os.getenv("OPENAI_MODEL", "gpt-4.1-mini")))
-    return create_app(ModelRouter({"listing-quality": targets}))
+    return create_app(ModelRouter(
+        {"listing-quality": targets},
+        input_cost_per_million=float(os.getenv("MODEL_INPUT_COST_PER_MILLION_USD", "0")),
+        output_cost_per_million=float(os.getenv("MODEL_OUTPUT_COST_PER_MILLION_USD", "0")),
+    ))
 
 
 app = app_from_environment()

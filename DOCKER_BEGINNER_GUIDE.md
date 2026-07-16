@@ -71,6 +71,8 @@ macOS
 └── Colima Linux 虚拟机
     └── Docker Engine
         ├── gateway 容器
+        ├── worker 容器
+        ├── redis 容器
         └── postgres 容器
 ```
 
@@ -119,7 +121,9 @@ CMD ["uvicorn", "amazon_ai_platform.llm_gateway:app", "--host", "0.0.0.0", "--po
 
 - `gateway`：FastAPI API 服务；
 - `postgres`：PostgreSQL 数据库；
-- `postgres_data`：持久化数据库数据的命名卷。
+- `redis`：任务队列和短期协调状态；
+- `worker`：消费受控任务并在 SIGTERM 时等待当前任务完成；
+- `postgres_data`、`redis_data`：持久化命名卷。
 
 Compose 默认创建项目网络，容器之间通过服务名通信。gateway 访问数据库应使用 `postgres:5432`，不能使用 `localhost:5432`。容器中的 `localhost` 只代表这个容器自己。
 
@@ -570,7 +574,7 @@ Dockerfile
 - 准备滚动发布及回滚；
 - 扫描镜像漏洞。
 
-本项目 Dockerfile 已采用非 root 用户，这是可以向面试官说明的安全实践。
+本项目 Dockerfile 已采用非 root 用户并声明 `STOPSIGNAL SIGTERM`；Compose 给 gateway/worker 30 秒优雅关闭窗口。worker 收到终止信号后不再领取新任务，并等待当前任务结束。
 
 ## 16. 动手练习
 

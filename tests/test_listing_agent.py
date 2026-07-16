@@ -41,3 +41,28 @@ def test_german_compliance_blocks_unsubstantiated_claims() -> None:
     issues = GermanMarketplaceCompliance.check(brief(), [variant])
     assert any(issue.severity == "block" and "Superlativ" in issue.rule for issue in issues)
     assert any(issue.severity == "block" and "Garantie" in issue.rule for issue in issues)
+
+
+def test_request_checkpoint_is_idempotent_and_human_review_never_publishes() -> None:
+    source = InMemoryCompetitorSource([])
+    agent = ListingOptimizationAgent(source, DeterministicGermanGenerator())
+
+    async def scenario():
+        first = await agent.run(brief(), request_id="checkpoint-1")
+        second = await agent.run(brief(), request_id="checkpoint-1")
+        review = await agent.review(
+            "checkpoint-1",
+            decision="approve",
+            reviewer_id="synthetic-reviewer",
+            note="draft approved for later manual publishing",
+        )
+        return first, second, review
+
+    first, second, review = asyncio.run(scenario())
+    assert first == second
+    assert first.fact_sources
+    assert review.publishes_listing is False
+    assert set(agent.node_latencies_ms) == {
+        "read_competitor_data", "generate_three_versions", "compliance_check"
+    }
+    assert agent.human_rejection_rate == 0

@@ -7,7 +7,14 @@ from datetime import date
 
 import httpx
 
-from amazon_ai_platform.spapi import AsyncSPAPIClient, SPAPIError
+import pytest
+
+from amazon_ai_platform.spapi import (
+    AsyncSPAPIClient,
+    InMemoryReportCache,
+    ReportFailed,
+    SPAPIError,
+)
 
 
 def run(coro):
@@ -129,3 +136,69 @@ def test_concurrent_callers_refresh_lwa_token_once() -> None:
 
     assert set(run(scenario())) == {"shared-token"}
     assert token_calls == 1
+
+
+def test_first_two_429_then_success() -> None:
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        if request.url.host == "api.amazon.com":
+            return httpx.Response(200, json={"access_token": "token", "expires_in": 3600})
+        attempts += 1
+        if attempts < 3:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        return httpx.Response(200, json={"Orders": []})
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = AsyncSPAPIClient(
+                client_id="id", client_secret="secret", refresh_token="refresh",
+                http=http, sleep=lambda _: asyncio.sleep(0),
+            )
+            return await client.request("GET", "/orders/v0/orders", operation="orders")
+
+    assert run(scenario()) == {"Orders": []}
+    assert attempts == 3
+
+
+def test_report_fatal_and_timeout_are_explicit() -> None:
+    class StatusClient(AsyncSPAPIClient):
+        async def request(self, *args, **kwargs):
+            return {"processingStatus": "FATAL"}
+
+    fatal = StatusClient(client_id="id", client_secret="secret", refresh_token="refresh")
+    with pytest.raises(ReportFailed, match="FATAL"):
+        run(fatal.wait_for_report("report-1", poll_interval=0))
+
+
+def test_report_window_cache_avoids_duplicate_creation() -> None:
+    cache = InMemoryReportCache()
+    create_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal create_calls
+        if request.url.host == "api.amazon.com":
+            return httpx.Response(200, json={"access_token": "token", "expires_in": 3600})
+        if request.url.host == "download.example":
+            return httpx.Response(200, content=json.dumps(report_payload()).encode())
+        if request.url.path.endswith("/reports"):
+            create_calls += 1
+            return httpx.Response(202, json={"reportId": "report-1"})
+        if "/reports/report-1" in request.url.path:
+            return httpx.Response(200, json={"processingStatus": "DONE", "reportDocumentId": "doc-1"})
+        return httpx.Response(200, json={"url": "https://download.example/report"})
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = AsyncSPAPIClient(
+                client_id="id", client_secret="secret", refresh_token="refresh",
+                seller_id="seller-hash", http=http, report_cache=cache,
+            )
+            first = await client.get_sales_and_traffic_report(date(2026, 7, 1), date(2026, 7, 2), poll_interval=0)
+            second = await client.get_sales_and_traffic_report(date(2026, 7, 1), date(2026, 7, 2), poll_interval=0)
+            return first, second
+
+    first, second = run(scenario())
+    assert first == second
+    assert create_calls == 1
