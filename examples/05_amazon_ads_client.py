@@ -1,4 +1,4 @@
-"""Amazon Ads Reporting v3 pattern. Run: python 05_amazon_ads_client.py --demo."""
+"""Amazon Ads Reporting v3 pattern. Run: python -m examples.05_amazon_ads_client --demo."""
 from __future__ import annotations
 
 import argparse

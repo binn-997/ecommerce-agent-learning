@@ -1,4 +1,4 @@
-"""Offline-first RAG pipeline. Run: python 06_rag_knowledge_base.py --demo.
+"""Offline-first RAG pipeline. Run: python -m examples.06_rag_knowledge_base --demo.
 
 The hash embedder exists only to make the entire retrieval pipeline runnable without
 network or API keys. In production, replace it with an embedding endpoint and store
@@ -13,9 +13,6 @@ import math
 import re
 from dataclasses import dataclass
 from typing import Protocol
-
-from litellm import aembedding
-
 
 @dataclass(frozen=True)
 class Document:
@@ -65,6 +62,10 @@ class LiteLLMEmbedder:
         self.model = model
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        try:
+            from litellm import aembedding
+        except ImportError as exc:
+            raise RuntimeError("真实 embedding 适配器需额外安装 litellm；--demo 不需要") from exc
         response = await aembedding(model=self.model, input=texts, timeout=45)
         return [item["embedding"] for item in response.data]
 

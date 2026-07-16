@@ -1,17 +1,30 @@
 services:
+  gateway:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ecommerce_ai
-      POSTGRES_USER: ecommerce
-      POSTGRES_PASSWORD: change-me-in-real-use
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-ecommerce}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ecommerce -d ecommerce_ai"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
