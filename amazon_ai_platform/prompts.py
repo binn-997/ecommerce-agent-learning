@@ -57,10 +57,12 @@ class PromptRegistry:
         try:
             return self._assets[(prompt_id, version, category)]
         except KeyError as exc:
-            raise KeyError(f"unknown prompt asset: {prompt_id}/{version}/{category}") from exc
+            raise KeyError(
+                f"unknown prompt asset: {prompt_id}/{version}/{category}"
+            ) from exc
 
 
-def listing_prompt(category: str, *, version: str = "1.0.0") -> PromptAsset:
+def listing_prompt(category: str, *, version: str = "2.0.0") -> PromptAsset:
     return PromptAsset(
         prompt_id="listing-de",
         version=version,
@@ -71,6 +73,9 @@ def listing_prompt(category: str, *, version: str = "1.0.0") -> PromptAsset:
         template=(
             "Erzeuge genau eine sachliche Amazon.de Listing-Variante für {category}. "
             "Nutze ausschließlich die übergebenen Fakten und source_ids. "
+            "Der Titel darf einschließlich Leerzeichen höchstens 75 Zeichen haben. "
+            "Gib zusätzlich genau ein Item Highlight mit höchstens 125 Zeichen für "
+            "Material oder empfohlenen Verwendungszweck zurück. "
             "Gib exakt fünf unterschiedliche Bulletpoints zurück; unbelegte absolute, "
             "medizinische oder zertifizierende Aussagen sind verboten."
         ),
@@ -119,11 +124,22 @@ def evaluate_prompt(
             hard_rule_passes += 1
         else:
             failures.add(case.case_id)
-        searchable = " ".join([variant.title, *variant.bullets, *variant.backend_keywords]).casefold()
+        searchable = " ".join(
+            [
+                variant.title,
+                variant.item_highlight,
+                *variant.bullets,
+                *variant.backend_keywords,
+            ]
+        ).casefold()
         keyword_total += len(case.required_keywords)
-        keyword_hits += sum(keyword.casefold() in searchable for keyword in case.required_keywords)
+        keyword_hits += sum(
+            keyword.casefold() in searchable for keyword in case.required_keywords
+        )
         citation_total += len(case.expected_citation_ids)
-        citation_hits += len(set(case.expected_citation_ids).intersection(output.citation_ids))
+        citation_hits += len(
+            set(case.expected_citation_ids).intersection(output.citation_ids)
+        )
         if output.human_preferred is not None:
             preferences.append(output.human_preferred)
     total = len(cases)
@@ -136,7 +152,9 @@ def evaluate_prompt(
         block_misses=block_misses,
         keyword_coverage=keyword_hits / keyword_total if keyword_total else 1,
         citation_accuracy=citation_hits / citation_total if citation_total else 1,
-        human_preference_rate=(sum(preferences) / len(preferences) if preferences else None),
+        human_preference_rate=(
+            sum(preferences) / len(preferences) if preferences else None
+        ),
         failed_case_ids=sorted(failures),
     )
 
@@ -150,9 +168,13 @@ def compare_evaluations(
         "prompt_id": baseline.prompt_id,
         "baseline_version": baseline.version,
         "candidate_version": candidate.version,
-        "schema_pass_rate_delta": candidate.schema_pass_rate - baseline.schema_pass_rate,
-        "hard_rule_pass_rate_delta": candidate.hard_rule_pass_rate - baseline.hard_rule_pass_rate,
+        "schema_pass_rate_delta": candidate.schema_pass_rate
+        - baseline.schema_pass_rate,
+        "hard_rule_pass_rate_delta": candidate.hard_rule_pass_rate
+        - baseline.hard_rule_pass_rate,
         "block_miss_delta": candidate.block_misses - baseline.block_misses,
-        "keyword_coverage_delta": candidate.keyword_coverage - baseline.keyword_coverage,
-        "citation_accuracy_delta": candidate.citation_accuracy - baseline.citation_accuracy,
+        "keyword_coverage_delta": candidate.keyword_coverage
+        - baseline.keyword_coverage,
+        "citation_accuracy_delta": candidate.citation_accuracy
+        - baseline.citation_accuracy,
     }

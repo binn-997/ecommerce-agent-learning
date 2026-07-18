@@ -43,21 +43,29 @@ def load_cases() -> tuple[list[GoldenCase], dict[str, CaseOutput]]:
             manufacturer="Synthetic GmbH",
             eu_responsible_person="Synthetic GmbH, Berlin",
         )
-        cases.append(GoldenCase(
-            case_id=item["case_id"],
-            category=item["category"],
-            brief=brief,
-            required_keywords=[item["keyword"]],
-            expected_block_rules=[RULES[claim]] if claim else [],
-            expected_citation_ids=[item["evidence"]],
-        ))
+        cases.append(
+            GoldenCase(
+                case_id=item["case_id"],
+                category=item["category"],
+                brief=brief,
+                required_keywords=[item["keyword"]],
+                expected_block_rules=[RULES[claim]] if claim else [],
+                expected_citation_ids=[item["evidence"]],
+            )
+        )
         title = f"{item['keyword']} aus {item['material']} für synthetische Tests"
         if claim:
             title += f" {claim}"
         outputs[item["case_id"]] = CaseOutput(
             payload={
                 "title": title,
-                "bullets": [f"Sachliche Eigenschaft {index} für den Test" for index in range(1, 6)],
+                "item_highlight": (
+                    f"{item['material']} für synthetische Vergleichs- und Suchtests"
+                ),
+                "bullets": [
+                    f"Sachliche Eigenschaft {index} für den Test"
+                    for index in range(1, 6)
+                ],
                 "backend_keywords": [item["keyword"]],
                 "rationale": "Reproduzierbare synthetische Auswertung mit Quellenbezug.",
             },
@@ -71,7 +79,9 @@ def test_prompt_registry_is_versioned_and_category_specific() -> None:
     registry = PromptRegistry()
     asset = listing_prompt("pet")
     registry.register(asset)
-    assert registry.get("listing-de", "1.0.0", "pet") == asset
+    assert registry.get("listing-de", "2.0.0", "pet") == asset
+    assert asset.output_schema["properties"]["title"]["maxLength"] == 75
+    assert asset.output_schema["properties"]["item_highlight"]["maxLength"] == 125
 
 
 def test_forty_case_prompt_gates_are_reproducible() -> None:
@@ -92,7 +102,7 @@ def test_prompt_version_diff_identifies_regression() -> None:
     baseline = evaluate_prompt(listing_prompt("mixed"), cases, outputs)
     broken = dict(outputs)
     broken.pop("pet-01")
-    candidate = evaluate_prompt(listing_prompt("mixed", version="1.1.0"), cases, broken)
+    candidate = evaluate_prompt(listing_prompt("mixed", version="2.1.0"), cases, broken)
     diff = compare_evaluations(baseline, candidate)
     assert diff["schema_pass_rate_delta"] < 0
     assert "pet-01" in candidate.failed_case_ids
