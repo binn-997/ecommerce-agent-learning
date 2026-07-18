@@ -56,7 +56,7 @@
 }
 
 \begin{document}
-\setstretch{1.08}
+\setstretch{1.06}
 
 % ========== HEADER ==========
 \begin{center}
@@ -64,7 +64,8 @@
   {\fontsize{10}{12}\selectfont
     深圳 \quad\textbar\quad
     电话：15322554993 \quad\textbar\quad
-    邮箱：peitianchen2026@163.com
+    邮箱：peitianchen2026@163.com \quad\textbar\quad
+    github: \href{https://github.com/binn-997}{https://github.com/binn-997}
   }
 \end{center}
 
@@ -73,10 +74,10 @@
 \vspace{1pt}
 
 % ========== OBJECTIVE ==========
-\section{职业目标}
+\section{职业背景}
 
 {\fontsize{9}{12}\selectfont
-具备\textbf{计算机专业背景}的复合型跨境电商人才。致力于通过 AI 智能体（Agent）、自动化工作流与数据驱动运营实现跨境业务的降本增效。拥有亚马逊德国站实战运营经验与全栈 AI 开发能力，擅长将技术落地为可量化的业务 GMV 增长。
+计算机科学与技术专业，具备 Amazon 德国站运营、Python 自动化及 C++ 后端开发经验。围绕跨境电商场景开发 SP-API 数据管道、Multi-LLM Gateway 与 LangGraph 决策工作流，关注结构化输出、故障降级、可追溯性及 Human-in-the-Loop。
 }
 
 \vspace{1pt}
@@ -86,14 +87,14 @@
 
 {\fontsize{9}{12}\selectfont
 \begin{tabular}{@{}p{2.6cm} p{13.8cm}@{}}
-\textbf{编程与开发} &
-  Python、C++、FastAPI、SQL、Docker、GitHub Actions CI/CD、QT 框架 \\[1.5pt]
-\textbf{AI \& 大模型} &
-  ChatGPT、Claude、DeepSeek、Gemini；Prompt Engineering、Function Calling、Structured Output \\[1.5pt]
-\textbf{Agent \& 自动化} &
-  LangChain/LangGraph 多 Agent 编排；n8n/Dify 工作流；飞书 API 集成；MCP Server 开发；RAG（Chroma） \\[1.5pt]
+\textbf{Python 后端} &
+  Python、FastAPI、Pydantic、asyncio、SQL、pytest、Ruff；C++、epoll、Reactor \\[1pt]
+\textbf{Agent 工程} &
+  LangGraph、Structured Output、RAG、MCP、Prompt 版本管理与离线评测 \\[1pt]
+\textbf{平台工程} &
+  Multi-LLM Gateway、Provider Fallback、熔断、Docker Compose、PostgreSQL、Redis、OpenTelemetry \\[1pt]
 \textbf{跨境业务} &
-  Amazon SP-API 集成；德国站运营；选品与 Listing 优化；广告投放（CPC/PPC）；ERP 对接 \\[1.5pt]
+  Amazon SP-API、Ads Reporting、德国站 Listing、ACOS/CTR/CVR/TACOS、飞书 API \\[1pt]
 \end{tabular}
 }
 
@@ -112,29 +113,21 @@
 
 \vspace{1pt}
 {\fontsize{9}{12}\selectfont
-负责亚马逊德国站（DE）服装（西服）及宠物地毯类目整体运营，利用计算机技术背景自研自动化工具，推动店铺月度 GMV 突破 30,000 USD。
+负责 Amazon 德国站西服及宠物地毯类目运营，并结合 Python、飞书 OpenAPI 与大模型 API 开发运营自动化工具，将分散的销售、库存、广告数据转为可复用的日报与协作流程。
 }
 
 \begin{itemize}
-  \item {\fontsize{9}{12}\selectfont\textbf{店铺运营与爆款打造：}独立运营德国站服装（西服）及宠物地毯类目，完成标题、关键词、五点描述与 A+ 页面优化，退款率控制在 4\% 以内；搭建广告推广方案并持续优化关键词与竞价，西服品类月销突破 15,000 USD。}
+  \item {\fontsize{9}{12}\selectfont\textbf{店铺运营：}负责 Listing、关键词、广告与库存分析，店铺月 GMV 超 30,000 USD，西服品类月销超 15,000 USD，退款率控制在 4\% 以内。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{数据报表自动化：}基于 Python 自动处理亚马逊销售、库存与广告报告，生成多维度结构化运营报表与可视化图表，替代人工 Excel 整理，大幅提升数据处理效率。}
+  \item {\fontsize{9}{12}\selectfont\textbf{报表处理工具：}使用 Python 批量读取销售、库存与广告导出文件，完成字段清洗、日期/数值转换和多表关联，统一 GMV、ACOS、CVR 等指标口径，减少重复 Excel 汇总。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{飞书自动化与 AI 集成：}搭建飞书多维表格、审批流与消息机器人，通过 OpenAPI 与 ERP 完成数据双向同步；调用 DeepSeek API 自动生成结构化日报并推送至运营群组。}
+  \item {\fontsize{9}{12}\selectfont\textbf{分析与可视化：}按站点、类目、ASIN 和日期聚合经营指标，自动生成结构化日报及趋势图表，辅助定位库存风险、广告消耗和转化变化，并保留人工复核口径。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{飞书自动化：}搭建多维表格、审批流与消息机器人，通过 OpenAPI 对接 ERP 数据；将报表结果同步到团队协作入口，减少跨系统复制和重复通知。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{AI 日报草稿：}调用 DeepSeek API 将确定性计算后的指标组织为结构化日报，限制模型只负责归纳和解释，生成结果经人工确认后再用于团队协作。}
 
 \end{itemize}
-
-\vspace{2pt}
-% Performance Table
-{\fontsize{8}{10}\selectfont
-\begin{tabularx}{\textwidth}{|l|c|c|c|X|}
-\hline
-\rowcolor{gray!10} \textbf{运营阶段} & \textbf{GMV (USD)} & \textbf{ROI / ACOS} & \textbf{转化率 (CVR)} & \textbf{关键业绩动作} \\ \hline
-初期 (3月) & 5,000+ & 25\% (ACOS) & 8.5\% & 基础 Listing 优化与数据报表体系搭建 \\ \hline
-增长期 (4-5月) & 18,000+ & 18\% (ACOS) & 12.4\% & 宠物地毯类目爆款打造，AI 辅助广告词精准拓词 \\ \hline
-\textbf{成熟期 (6月)} & \textbf{32,500+} & \textbf{8\% (ACOS)} & \textbf{15.8\%} & \textbf{西服品类月销突破 1.5w USD，自动化工作流全面提效} \\ \hline
-\end{tabularx}
-}
 
 \vspace{2pt}
 
@@ -145,11 +138,8 @@
 {\fontsize{10}{12}\selectfont 2025年3月 -- 2025年7月}
 \end{tabularx}
 
-\noindent{\fontsize{10}{12}\selectfont\textit{游戏服务器开发工程师（实习）}} \hfill {\fontsize{10}{12}\selectfont\textit{广州}}
-
-\vspace{1pt}
 {\fontsize{9}{12}\selectfont
-参与游戏后端服务器架构设计与开发，基于 C++ 与 epoll 实现高并发 TCP 通信模块，采用 Reactor 模式处理网络 IO，通过多线程架构支撑数千并发连接，完成玩家匹配、房间管理与实时状态同步等核心玩法逻辑。
+基于 C++、epoll、Reactor 与多线程参与 TCP 通信、连接管理和实时状态同步开发，积累事件驱动、背压与异常处理经验。
 }
 
 \vspace{2pt}
@@ -168,21 +158,21 @@
 
 \vspace{1pt}
 {\fontsize{9}{12}\selectfont
-独立设计并开发基于 Amazon SP-API 与多模型的跨境电商智能平台，涵盖 Listing 生成、关键词分析、智能客服、广告分析等模块，实现从数据采集到业务落地的全链路自动化。
+面向 Amazon 德国站独立设计可离线验证的 AI Agent 平台，将真实运营中的报表、Listing、广告分析和团队协作问题沉淀为可复用模块；核心链路已通过 mock 与回归测试，真实 Amazon、Ads 及飞书账号仍需另行联调。
 }
 
 \begin{itemize}
-  \item {\fontsize{9}{12}\selectfont\textbf{数据底座建设：}基于 Python 封装 Amazon SP-API SDK，实现订单、库存、广告、报表等数据自动化拉取；解决 OAuth 2.0 授权、Rate Limiting 令牌桶及 429 指数退避重试等工程难点。}
+  \item {\fontsize{9}{12}\selectfont\textbf{SP-API 数据引擎：}实现异步客户端，覆盖 LWA Token 缓存与并发刷新、按 operation 隔离的令牌桶，以及 429/可恢复 5xx 的全抖动重试；完成 Sales \& Traffic 报表创建、轮询、下载、GZIP 解压与 Pydantic 校验。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{LLM Gateway 开发：}基于 FastAPI 构建多模型统一接入网关，封装 Claude、GPT-4、DeepSeek、Gemini 等 API，支持流式与结构化 JSON 输出，降低业务侧多模型调用成本。}
+  \item {\fontsize{9}{12}\selectfont\textbf{可信数据管道：}建立 raw、标准与指标三层数据契约，在事务内完成原始数据入库、标准化 upsert 与游标更新；以稳定业务键、request ID、文件哈希和 trace ID 支持幂等重跑、失败回滚与来源追踪。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{Listing 生成 Agent：}结合竞品 ASIN 数据，利用 LangGraph 编排多节点 Agent 工作流（竞品分析 $\rightarrow$ 标题生成 $\rightarrow$ 违规检测 $\rightarrow$ 自动重写），生成符合亚马逊规范的标题与五点描述。}
+  \item {\fontsize{9}{12}\selectfont\textbf{Multi-LLM Gateway：}基于 FastAPI 实现 OpenAI 兼容接口，以 Adapter 隔离 Claude、DeepSeek 与 OpenAI；通过超时、并发闸门、熔断和 Fallback 控制上游故障，使用注册 JSON Schema + Pydantic 二次验证拦截非法输出。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{RAG 知识库与智能客服：}基于 Dify 搭建 Amazon SOP 知识库（Chroma 向量库），构建智能客服 Agent，实现客户咨询自动响应与 SP-API 订单状态实时查询。}
+  \item {\fontsize{9}{12}\selectfont\textbf{Listing 决策 Agent：}使用 LangGraph 读取带 source\_id/observed\_at 的竞品证据，并发生成三版、每版五条德语卖点；以确定性规则检查禁词、标题和事实依据，结合 checkpoint 保证重复 request\_id 可恢复且不重复执行。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{广告报表自动化：}使用 n8n 搭建定时工作流，自动拉取 SP-API 广告报表，调用 Claude API 进行趋势分析与优化建议，结果通过飞书机器人推送，实现广告数据日报零人工干预。}
+  \item {\fontsize{9}{12}\selectfont\textbf{RAG/MCP 与人审：}实现按版本、生效时间、marketplace 和 access scope 过滤的 RAG，答案必须返回引用或拒答；MCP 仅暴露四个只读/草稿工具，Listing、改价与广告操作始终保留 Human-in-the-Loop。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{MCP Server 与工程部署：}基于 MCP 协议开发 Amazon MCP Server，将 SP-API 封装为标准化 Tool 供 Claude Code 调用；Docker Compose 容器化编排，GitHub Actions CI/CD 自动化测试与部署。}
+  \item {\fontsize{9}{12}\selectfont\textbf{协作与工程交付：}实现飞书 Bitable search + update/create 幂等同步、事件验签与 trace 留痕；Docker Compose 编排 Gateway/PostgreSQL/Redis/Worker，50 个离线测试覆盖重试、事务回滚、Fallback、非法输出、权限及 HITL。}
 \end{itemize}
 
 \vspace{1pt}
