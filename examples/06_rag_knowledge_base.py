@@ -13,18 +13,21 @@ from amazon_ai_platform.rag import PolicyKnowledgeBase
 DOCUMENTS = [
     PolicyDocument(
         document_id="listing-policy-de",
-        version="2026.1",
+        version="2026.2",
         title="Amazon.de Listing-Regeln",
         text=(
-            "Titel beschreiben das Produkt sachlich. Begriffe wie Guaranteed Best, "
+            "Ab 27. Juli 2026 haben Nicht-Medien-Titel höchstens 75 Zeichen inklusive "
+            "Leerzeichen. Ein Item Highlight hat höchstens 125 Zeichen und nennt Material "
+            "oder empfohlene Verwendung. Titel beschreiben das Produkt sachlich. "
+            "Begriffe wie Guaranteed Best, "
             "Miracle oder unbelegte medizinische Aussagen sind gesperrt."
         ),
-        effective_from=date(2026, 1, 1),
+        effective_from=date(2026, 7, 27),
         marketplace="amazon.de",
         category="pet",
         language="de",
         access_scope="public",
-        source_url="urn:synthetic:policy:listing-de:2026.1",
+        source_url="urn:synthetic:policy:listing-de:2026.2",
     )
 ]
 
@@ -38,8 +41,8 @@ async def main() -> None:
     knowledge_base = PolicyKnowledgeBase()
     await knowledge_base.add_documents(DOCUMENTS)
     answer = await knowledge_base.answer(
-        "Darf der Titel Guaranteed Best enthalten?",
-        as_of=date(2026, 7, 16),
+        "Wie lang dürfen Titel sein und was ist ein Item Highlight?",
+        as_of=date(2026, 7, 27),
         marketplace="amazon.de",
         category="pet",
         scopes={"public"},

@@ -9,7 +9,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-def safe_ratio(numerator: int | float | Decimal, denominator: int | float | Decimal) -> float | None:
+LISTING_TITLE_MAX_LENGTH = 75
+LISTING_ITEM_HIGHLIGHT_MAX_LENGTH = 125
+
+
+def safe_ratio(
+    numerator: int | float | Decimal, denominator: int | float | Decimal
+) -> float | None:
     """Return a ratio without turning missing evidence into a misleading zero."""
     if denominator == 0:
         return None
@@ -27,14 +33,18 @@ class TrafficByAsin(BaseModel):
     sessions: int = 0
     page_views: int = Field(default=0, alias="pageViews")
     buy_box_percentage: float | None = Field(default=None, alias="buyBoxPercentage")
-    unit_session_percentage: float | None = Field(default=None, alias="unitSessionPercentage")
+    unit_session_percentage: float | None = Field(
+        default=None, alias="unitSessionPercentage"
+    )
 
 
 class SalesByAsin(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     units_ordered: int = Field(default=0, alias="unitsOrdered")
-    ordered_product_sales: Money = Field(default_factory=Money, alias="orderedProductSales")
+    ordered_product_sales: Money = Field(
+        default_factory=Money, alias="orderedProductSales"
+    )
 
 
 class AsinPerformance(BaseModel):
@@ -68,9 +78,12 @@ class SalesAndTrafficReport(BaseModel):
 
 
 class ListingVariant(BaseModel):
-    """A German-market listing proposal, not an instruction to publish it."""
+    """A post-July-2026 German-market proposal, never an instruction to publish."""
 
-    title: str = Field(min_length=10, max_length=200)
+    title: str = Field(min_length=10, max_length=LISTING_TITLE_MAX_LENGTH)
+    item_highlight: str = Field(
+        min_length=10, max_length=LISTING_ITEM_HIGHLIGHT_MAX_LENGTH
+    )
     bullets: list[str] = Field(min_length=5, max_length=5)
     backend_keywords: list[str] = Field(default_factory=list, max_length=20)
     rationale: str = Field(min_length=10, max_length=1000)

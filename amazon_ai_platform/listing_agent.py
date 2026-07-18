@@ -17,7 +17,21 @@ from typing import Any, Literal, Protocol, TypedDict
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
-from .models import ComplianceIssue, ListingDraft, ListingVariant
+from .models import (
+    LISTING_ITEM_HIGHLIGHT_MAX_LENGTH,
+    LISTING_TITLE_MAX_LENGTH,
+    ComplianceIssue,
+    ListingDraft,
+    ListingVariant,
+)
+
+
+def _truncate_at_word(text: str, limit: int) -> str:
+    """Keep generated copy inside an Amazon limit without cutting a word."""
+    if len(text) <= limit:
+        return text
+    shortened = text[: limit + 1].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return shortened or text[:limit]
 
 
 class ProductBrief(BaseModel):
@@ -117,14 +131,21 @@ class DeterministicGermanGenerator:
             ("Pflege", "unkomplizierte Routinen"),
         ]
         angle, benefit = angles[version]
-        title = f"{keyword} – {brief.product_name}, {brief.material}, {angle} für {brief.target_customer}"
+        title = f"{keyword} – {brief.product_name}, {angle}"
+        item_highlight = (
+            f"{brief.material}; empfohlen für {brief.target_customer}; "
+            f"{brief.features[version]} und {benefit}"
+        )
         features = (brief.features * 2)[:5]
         bullets = [
             f"{feature.upper()} – Aspekt {index}: sachlich beschrieben für {benefit}; bitte Maße und Lieferumfang prüfen."
             for index, feature in enumerate(features, start=1)
         ]
         return ListingVariant(
-            title=title[:200],
+            title=_truncate_at_word(title, LISTING_TITLE_MAX_LENGTH),
+            item_highlight=_truncate_at_word(
+                item_highlight, LISTING_ITEM_HIGHLIGHT_MAX_LENGTH
+            ),
             bullets=bullets,
             backend_keywords=list(dict.fromkeys(brief.primary_keywords)),
             rationale=f"Version {version + 1} priorisiert {angle}; basiert auf {len(evidence)} belegten Wettbewerbsdatensätzen.",
@@ -136,7 +157,10 @@ class GermanMarketplaceCompliance:
 
     BLOCK_PATTERNS: tuple[tuple[str, str], ...] = (
         (r"\b(best|beste[rsn]?|nummer\s*1|nr\.?\s*1)\b", "unbelegter Superlativ"),
-        (r"(?:\b(?:garantiert\w*|guaranteed)\b|100\s*%)", "unbelegtes Garantieversprechen"),
+        (
+            r"(?:\b(?:garantiert\w*|guaranteed)\b|100\s*%)",
+            "unbelegtes Garantieversprechen",
+        ),
         (r"\b(heilt|therapiert|cures?|miracle)\b", "medizinisches Heilversprechen"),
         (r"\b(kostenlos|free)\b", "preisbezogene Werbeaussage"),
     )
@@ -148,39 +172,77 @@ class GermanMarketplaceCompliance:
         issues: list[ComplianceIssue] = []
         for index, variant in enumerate(variants, start=1):
             cls._check_text(f"variant[{index}].title", variant.title, issues)
+            cls._check_text(
+                f"variant[{index}].item_highlight", variant.item_highlight, issues
+            )
             for bullet_index, bullet in enumerate(variant.bullets, start=1):
-                cls._check_text(f"variant[{index}].bullets[{bullet_index}]", bullet, issues)
-            if len(variant.title) > 200:
-                issues.append(ComplianceIssue(
-                    severity="block", field=f"variant[{index}].title",
-                    rule="Amazon title length", evidence=f"length={len(variant.title)}",
-                ))
+                cls._check_text(
+                    f"variant[{index}].bullets[{bullet_index}]", bullet, issues
+                )
+            if len(variant.title) > LISTING_TITLE_MAX_LENGTH:
+                issues.append(
+                    ComplianceIssue(
+                        severity="block",
+                        field=f"variant[{index}].title",
+                        rule="Amazon 2026 title length",
+                        evidence=(
+                            f"length={len(variant.title)}; limit={LISTING_TITLE_MAX_LENGTH}"
+                        ),
+                    )
+                )
+            if len(variant.item_highlight) > LISTING_ITEM_HIGHLIGHT_MAX_LENGTH:
+                issues.append(
+                    ComplianceIssue(
+                        severity="block",
+                        field=f"variant[{index}].item_highlight",
+                        rule="Amazon 2026 Item Highlight length",
+                        evidence=(
+                            f"length={len(variant.item_highlight)}; "
+                            f"limit={LISTING_ITEM_HIGHLIGHT_MAX_LENGTH}"
+                        ),
+                    )
+                )
             if brief.primary_keywords[0].casefold() not in variant.title.casefold():
-                issues.append(ComplianceIssue(
-                    severity="warn", field=f"variant[{index}].title",
-                    rule="primary keyword missing", evidence=brief.primary_keywords[0],
-                ))
+                issues.append(
+                    ComplianceIssue(
+                        severity="warn",
+                        field=f"variant[{index}].title",
+                        rule="primary keyword missing",
+                        evidence=brief.primary_keywords[0],
+                    )
+                )
         if not brief.manufacturer:
-            issues.append(ComplianceIssue(
-                severity="warn", field="brief.manufacturer",
-                rule="GPSR/product traceability metadata must be reviewed", evidence="missing",
-            ))
+            issues.append(
+                ComplianceIssue(
+                    severity="warn",
+                    field="brief.manufacturer",
+                    rule="GPSR/product traceability metadata must be reviewed",
+                    evidence="missing",
+                )
+            )
         if not brief.eu_responsible_person:
-            issues.append(ComplianceIssue(
-                severity="warn", field="brief.eu_responsible_person",
-                rule="EU responsible-person applicability must be reviewed", evidence="missing",
-            ))
+            issues.append(
+                ComplianceIssue(
+                    severity="warn",
+                    field="brief.eu_responsible_person",
+                    rule="EU responsible-person applicability must be reviewed",
+                    evidence="missing",
+                )
+            )
         return issues
 
     @classmethod
-    def _check_text(
-        cls, field: str, text: str, issues: list[ComplianceIssue]
-    ) -> None:
+    def _check_text(cls, field: str, text: str, issues: list[ComplianceIssue]) -> None:
         for pattern, rule in cls.BLOCK_PATTERNS:
             if match := re.search(pattern, text, re.IGNORECASE):
-                issues.append(ComplianceIssue(
-                    severity="block", field=field, rule=rule, evidence=match.group(0),
-                ))
+                issues.append(
+                    ComplianceIssue(
+                        severity="block",
+                        field=field,
+                        rule=rule,
+                        evidence=match.group(0),
+                    )
+                )
 
 
 class ListingOptimizationAgent:
@@ -203,11 +265,13 @@ class ListingOptimizationAgent:
 
     @staticmethod
     def _audit(state: ListingState, node: str, detail: str) -> list[dict[str, Any]]:
-        return state.get("audit_log", []) + [{
-            "node": node,
-            "detail": detail,
-            "at": datetime.now(timezone.utc).isoformat(),
-        }]
+        return state.get("audit_log", []) + [
+            {
+                "node": node,
+                "detail": detail,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
 
     async def read_competitor_data(self, state: ListingState) -> dict[str, Any]:
         """Node A: read authorized competitor evidence; never invent observations."""
@@ -217,7 +281,9 @@ class ListingOptimizationAgent:
         self._record_node_latency("read_competitor_data", started)
         return {
             "competitor_evidence": [item.model_dump() for item in evidence],
-            "audit_log": self._audit(state, "read_competitor_data", f"sources={len(evidence)}"),
+            "audit_log": self._audit(
+                state, "read_competitor_data", f"sources={len(evidence)}"
+            ),
         }
 
     async def generate_three_versions(self, state: ListingState) -> dict[str, Any]:
@@ -229,12 +295,17 @@ class ListingOptimizationAgent:
             for item in state.get("competitor_evidence", [])
         ]
         variants = await asyncio.gather(
-            *(self._generate_with_retry(brief, evidence, version) for version in range(3))
+            *(
+                self._generate_with_retry(brief, evidence, version)
+                for version in range(3)
+            )
         )
         self._record_node_latency("generate_three_versions", started)
         return {
             "variants": [variant.model_dump() for variant in variants],
-            "audit_log": self._audit(state, "generate_three_versions", "variants=3; bullets=5 each"),
+            "audit_log": self._audit(
+                state, "generate_three_versions", "variants=3; bullets=5 each"
+            ),
         }
 
     async def _generate_with_retry(
@@ -260,7 +331,10 @@ class ListingOptimizationAgent:
         brief = ProductBrief.model_validate(state["brief"])
         variants = [ListingVariant.model_validate(item) for item in state["variants"]]
         issues = GermanMarketplaceCompliance.check(brief, variants)
-        evidence = [CompetitorEvidence.model_validate(item) for item in state.get("competitor_evidence", [])]
+        evidence = [
+            CompetitorEvidence.model_validate(item)
+            for item in state.get("competitor_evidence", [])
+        ]
         draft = ListingDraft(
             request_id=state["request_id"],
             variants=variants,
@@ -272,7 +346,13 @@ class ListingOptimizationAgent:
                     *[item.source_id for item in evidence],
                 ]
                 for variant_index in range(1, 4)
-                for field in ("title", "bullets", "backend_keywords", "rationale")
+                for field in (
+                    "title",
+                    "item_highlight",
+                    "bullets",
+                    "backend_keywords",
+                    "rationale",
+                )
             },
             requires_human_review=True,
             generated_at=datetime.now(timezone.utc).isoformat(),
@@ -283,7 +363,9 @@ class ListingOptimizationAgent:
             "compliance_issues": [issue.model_dump() for issue in issues],
             "requires_human_review": True,
             "result": draft.model_dump(mode="json"),
-            "audit_log": self._audit(state, "compliance_check", f"issues={len(issues)}; blocks={blocks}"),
+            "audit_log": self._audit(
+                state, "compliance_check", f"issues={len(issues)}; blocks={blocks}"
+            ),
         }
 
     def _compile(self):
@@ -302,7 +384,9 @@ class ListingOptimizationAgent:
             int((time.perf_counter() - started) * 1000)
         )
 
-    async def run(self, brief: ProductBrief, *, request_id: str | None = None) -> ListingDraft:
+    async def run(
+        self, brief: ProductBrief, *, request_id: str | None = None
+    ) -> ListingDraft:
         resolved_request_id = request_id or str(uuid.uuid4())
         if cached := await self.checkpoint.get(resolved_request_id):
             return cached
@@ -348,28 +432,42 @@ class ListingOptimizationAgent:
 
 
 async def demo() -> ListingDraft:
-    evidence = [CompetitorEvidence(
-        source_id="spapi:catalog:B0DEMO:2026-07-16",
-        asin="B0DEMO",
-        observed_at="2026-07-16T08:00:00Z",
-        title="Hundeteppich für den Innenbereich",
-        bullets=["Waschbares Material", "Rutschhemmende Unterseite"],
-        keywords=["Hundeteppich", "Schmutzfangmatte Hund"],
-    )]
+    evidence = [
+        CompetitorEvidence(
+            source_id="spapi:catalog:B0DEMO:2026-07-16",
+            asin="B0DEMO",
+            observed_at="2026-07-16T08:00:00Z",
+            title="Hundeteppich für den Innenbereich",
+            bullets=["Waschbares Material", "Rutschhemmende Unterseite"],
+            keywords=["Hundeteppich", "Schmutzfangmatte Hund"],
+        )
+    ]
     brief = ProductBrief(
         sku="DE-PET-001",
         product_name="Schmutzfangmatte für Haustiere",
         category="Haustierbedarf",
         material="Mikrofaser",
-        features=["waschbar", "saugfähig", "rutschhemmend", "weiche Oberfläche", "pflegeleicht"],
+        features=[
+            "waschbar",
+            "saugfähig",
+            "rutschhemmend",
+            "weiche Oberfläche",
+            "pflegeleicht",
+        ],
         primary_keywords=["Hundeteppich", "Schmutzfangmatte Hund"],
         target_customer="Hundehaushalte",
         manufacturer="Demo Pet GmbH",
         eu_responsible_person="Demo Pet GmbH, Berlin",
     )
-    agent = ListingOptimizationAgent(InMemoryCompetitorSource(evidence), DeterministicGermanGenerator())
+    agent = ListingOptimizationAgent(
+        InMemoryCompetitorSource(evidence), DeterministicGermanGenerator()
+    )
     return await agent.run(brief, request_id="demo-listing-001")
 
 
 if __name__ == "__main__":
-    print(json.dumps(asyncio.run(demo()).model_dump(mode="json"), ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            asyncio.run(demo()).model_dump(mode="json"), ensure_ascii=False, indent=2
+        )
+    )

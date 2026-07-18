@@ -70,19 +70,25 @@ def test_evidence_to_listing_human_review_golden_path() -> None:
         manufacturer="Synthetic GmbH",
         eu_responsible_person="Synthetic GmbH, Berlin",
     )
-    evidence = [CompetitorEvidence(
-        source_id="synthetic:competitor:B0TEST0001",
-        asin="B0TEST0001",
-        observed_at="2026-07-16T00:00:00Z",
-        title="Hundeteppich",
-        bullets=["Waschbar"],
-        keywords=["Hundeteppich"],
-    )]
-    draft = asyncio.run(ListingOptimizationAgent(
-        InMemoryCompetitorSource(evidence), DeterministicGermanGenerator()
-    ).run(brief, request_id="trace-listing-001"))
+    evidence = [
+        CompetitorEvidence(
+            source_id="synthetic:competitor:B0TEST0001",
+            asin="B0TEST0001",
+            observed_at="2026-07-16T00:00:00Z",
+            title="Hundeteppich",
+            bullets=["Waschbar"],
+            keywords=["Hundeteppich"],
+        )
+    ]
+    draft = asyncio.run(
+        ListingOptimizationAgent(
+            InMemoryCompetitorSource(evidence), DeterministicGermanGenerator()
+        ).run(brief, request_id="trace-listing-001")
+    )
     assert len(draft.variants) == 3
     assert all(len(variant.bullets) == 5 for variant in draft.variants)
+    assert all(len(variant.title) <= 75 for variant in draft.variants)
+    assert all(len(variant.item_highlight) <= 125 for variant in draft.variants)
     assert draft.source_ids == ["synthetic:competitor:B0TEST0001"]
     assert draft.requires_human_review is True
 

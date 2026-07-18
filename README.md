@@ -76,6 +76,28 @@ curl -X POST http://127.0.0.1:8000/v1/chat/completions \
   }'
 ```
 
+`listing_variant` 从 Prompt `2.0.0` 起采用 2026-07-27 后的双字段标题契约：
+
+```json
+{
+  "title": "Hundeteppich – Waschbare Schmutzfangmatte",
+  "item_highlight": "Mikrofaser für Hundehaushalte; waschbar und pflegeleicht",
+  "bullets": [
+    "WASCHBAR – Sachliche Produkteigenschaft mit prüfbarer Information.",
+    "SAUGFÄHIG – Sachliche Produkteigenschaft mit prüfbarer Information.",
+    "RUTSCHHEMMEND – Sachliche Produkteigenschaft mit prüfbarer Information.",
+    "WEICH – Sachliche Produkteigenschaft mit prüfbarer Information.",
+    "PFLEGELEICHT – Sachliche Produkteigenschaft mit prüfbarer Information."
+  ],
+  "backend_keywords": ["hundeteppich"],
+  "rationale": "生成理由与事实来源说明"
+}
+```
+
+非媒体类目的 `title` 含空格最多 75 个字符，`item_highlight` 最多 125 个字符。
+Gateway 会拒绝旧的单标题结构或超限内容并尝试 fallback；Listing Agent 只生成草稿，
+不会自动写回 Seller Central。
+
 一键启动网关和 PostgreSQL：
 
 ```bash
@@ -94,7 +116,7 @@ curl http://127.0.0.1:8000/health
 | Business Hub | `amazon_ai_platform/feishu.py` | token 缓存、卡片纯函数、Bitable search + update/create 幂等写、订单同步、事件验签 token、选品指令 |
 | Brain Gateway | `amazon_ai_platform/llm_gateway.py` | 标准接口、多 Provider Adapter、fallback、circuit breaker、并发闸门、注册 Schema + Pydantic 二次校验 |
 | Prompt/RAG | `amazon_ai_platform/prompts.py`、`rag.py` | Prompt 版本/Schema、40 条跨类目评测、版本/生效时间/权限检索、50 条检索与拒答评测、引用 |
-| Decision Engine | `amazon_ai_platform/listing_agent.py` | 三节点图、三版五点、事实来源、重试、checkpoint、德国站规则、approve/reject/edit 人审记录 |
+| Decision Engine | `amazon_ai_platform/listing_agent.py` | 三节点图、三版五点、75 字符 Title + 125 字符 Item Highlight、事实来源、重试、checkpoint、德国站规则与人审记录 |
 | MCP | `amazon_ai_platform/mcp_server.py` | 官方 SDK 四个最小工具；seller/marketplace 由认证上下文注入，无发布/改价/广告写工具 |
 | Runtime | `business_api.py`、`worker.py`、`telemetry.py` | 飞书 webhook、Redis worker SIGTERM draining、OpenTelemetry trace、Prometheus 格式网关指标 |
 | Persistence | `sql/init.sql`、`alembic/` | raw、标准指标、Ads、游标、告警、审计、人审表及 Alembic migration |
@@ -127,7 +149,7 @@ Docker 四服务运行验收已于 2026-07-16 在本地 Colima 完成，包括 h
 - **当前 SP-API 请求默认不要求 AWS Key/SigV4。** 当前 Amazon 上手文档的常规调用凭据是 LWA client/secret、refresh token 与区域 endpoint；客户端仍允许注入 `signer`，用于兼容仍需签名的旧基础设施，但不把历史方案设为默认。
 - **限流按操作隔离。** Amazon 的 usage plan 是 operation 维度且可能动态变化；不同 API 共用一个桶会导致低频 Reports 拖垮 Orders。
 - **模型输出要验证两次。** Provider 收到 JSON Schema 只是请求，Gateway 仍用 Pydantic 解析；无效 JSON 与超时一样触发下一 Provider。
-- **规则检查不用 LLM 自证。** 标题长度、绝对化用语、五点数量等由确定性代码检查；法律适用性和类目规则交给人工与版本化知识库。
+- **规则检查不用 LLM 自证。** 2026-07-27 起非媒体类目的 Title 75 字符、Item Highlight 125 字符限制，以及绝对化用语、五点数量等由确定性代码检查；法律适用性和类目规则交给人工与版本化知识库。
 - **幂等先于自动化。** 订单以 `AmazonOrderId`、告警以 `source_key` upsert；重跑不会制造重复业务事件。
 - **PII 不进入模型。** 当前模型只含订单业务字段，不含姓名、地址、邮箱。需要 PII 的 SP-API 操作必须单独实现 Restricted Data Token 和更严格审计。
 
@@ -155,6 +177,7 @@ Docker 四服务运行验收已于 2026-07-16 在本地 Colima 完成，包括 h
 - [Amazon Usage Plans and Rate Limits](https://developer-docs.amazon.com/sp-api/docs/usage-plans-and-rate-limits)
 - [Sales and Traffic Business Report](https://developer-docs.amazon.com/sp-api/docs/report-type-values-analytics)
 - [Reports API request tutorial](https://developer-docs.amazon.com/sp-api/docs/reports-api-v2021-06-30-tutorial-request-a-report)
+- [Amazon：2026-07-27 产品标题与 Item Highlights 更新公告](https://sellercentral.amazon.com/seller-forums/discussions/t/145b6d0f-999c-4555-896c-c694bda2e470)
 - [Feishu server API calling process](https://open.feishu.cn/document/server-docs/api-call-guide/calling-process/get-)
 - [EU Regulation 2023/988 (GPSR)](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R0988)
 
