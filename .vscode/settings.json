@@ -58,7 +58,7 @@
     // =========================
     // Clean
     // =========================
-    "latex-workshop.latex.autoClean.run": "never",
+    "latex-workshop.latex.autoClean.run": "onFailed",
 
     "latex-workshop.latex.clean.fileTypes": [
         "*.aux",
