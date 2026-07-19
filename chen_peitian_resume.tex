@@ -165,17 +165,17 @@
 
 \vspace{1pt}
 {\fontsize{9}{12}\selectfont
-面向 Amazon 德国站独立设计可离线验证的 AI Agent 平台，将真实运营中的报表、Listing、广告分析和团队协作问题沉淀为可复用模块；核心链路已通过 mock 与回归测试。
+面向 Amazon 德国站运营场景设计可离线验证的 AI Agent 平台，将报表、Listing、广告分析和团队协作流程拆解为数据契约、决策工作流与人工审核节点；核心链路已通过 mock 协议边界和回归测试。
 }
 
 \begin{itemize}
-  \item {\fontsize{9}{12}\selectfont\textbf{数据与模型服务：}实现 SP-API 销售流量报表拉取、限流重试与结构化校验，并使用 FastAPI 统一接入多家 LLM，提供超时、熔断、Fallback 及 JSON Schema 输出校验。}
+  \item {\fontsize{9}{12}\selectfont\textbf{数据接入与指标管道：}基于 asyncio 封装 SP-API 报表客户端，实现 LWA Token 并发刷新、按接口维度令牌桶限流、429/5xx 抖动重试及报表轮询解析；通过 Pydantic 数据契约和 Raw/Standard/Metric 分层，保证字段校验、幂等写入与指标可追溯。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{LangGraph 工作流：}将证据读取、德语卖点生成、确定性合规检查和人工审核拆分为状态节点，结合 checkpoint 与 request ID 支持中断恢复及幂等执行。}
+  \item {\fontsize{9}{12}\selectfont\textbf{LLM Gateway 与可靠性：}使用 FastAPI 构建 OpenAI 兼容接口，以 Provider Adapter 隔离不同模型协议；实现超时控制、并发限制、Circuit Breaker、Fallback 和结构化 JSON Schema 校验，统一输出错误码与 trace context。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{RAG 与安全边界：}按 marketplace、版本、生效时间和权限范围检索运营知识，要求回答附带来源引用或拒答；Listing、改价和广告动作仅生成建议或草稿，保留 Human-in-the-Loop。}
+  \item {\fontsize{9}{12}\selectfont\textbf{LangGraph Agent：}将商品事实读取、竞品证据整理、德语卖点生成和德国站合规检查编排为状态图，固定输出 3 个版本、每版 5 条卖点；通过 checkpoint、request ID 和幂等缓存支持中断恢复，最终停在可审核草稿。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{工程验证：}使用 Docker Compose 编排 Gateway、PostgreSQL、Redis 与 Worker，以离线测试覆盖接口重试、幂等同步、模型降级、非法输出和 Human-in-the-Loop 边界。}
+  \item {\fontsize{9}{12}\selectfont\textbf{RAG 与工程边界：}按 marketplace、规则版本、生效时间及权限过滤检索运营知识，输出引用或明确拒答；以 Docker Compose 编排 Gateway、PostgreSQL、Redis 与 Worker，并用离线测试覆盖重试、降级、幂等同步、非法输出及 Human-in-the-Loop。}
 \end{itemize}
 
 \vspace{1pt}
