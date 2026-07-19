@@ -1,7 +1,7 @@
 # Amazon AI Platform
 
-> 想逐个模块学习源码，请使用：[Amazon AI Platform 逐代码学习手册](CODE_LEARNING_GUIDE.md)。<br>
-> Docker 完全零基础读者请阅读：[Docker 与 Docker Compose 零基础学习手册](DOCKER_BEGINNER_GUIDE.md)。
+> 想逐个模块学习源码，请使用：[Amazon AI Platform 逐代码学习手册](docs/CODE_LEARNING_GUIDE.md)。<br>
+> Docker 完全零基础读者请阅读：[Docker 与 Docker Compose 零基础学习手册](docs/DOCKER_BEGINNER_GUIDE.md)。
 
 面向 Amazon 德国站的生产级 AI Agent 作品集。项目把简历中的真实经历——服装/宠物类目运营、月 GMV 3 万美元、Python 报表、飞书自动化、C++ 高并发后端——收敛为三条可以现场演示的业务链路，而不是一组互不相连的教程脚本。
 
@@ -181,4 +181,4 @@ Docker 四服务运行验收已于 2026-07-16 在本地 Colima 完成，包括 h
 - [Feishu server API calling process](https://open.feishu.cn/document/server-docs/api-call-guide/calling-process/get-)
 - [EU Regulation 2023/988 (GPSR)](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R0988)
 
-完整周计划、避坑矩阵、验收条件与面试 Point 见 [LEARNING_PLAN.md](LEARNING_PLAN.md)。
+完整周计划、避坑矩阵、验收条件与面试 Point 见 [docs/LEARNING_PLAN.md](docs/LEARNING_PLAN.md)。

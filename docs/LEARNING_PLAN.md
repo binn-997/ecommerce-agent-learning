@@ -302,7 +302,7 @@
 | 8 | 已实现 | 飞书 token/cache、webhook 验签、ack、Bitable upsert、去重通知、卡片人审 | 需飞书测试租户权限 smoke test |
 | 9 | 已实现 | Ads v3 报表与证据优先诊断；低样本/归因延迟/零分母保护 | 需 Ads profile 真实最小调用 |
 | 10 | 已实现 | 官方 MCP SDK 四工具、认证上下文、scope、trace、无写工具；版本化 n8n | Dify/Coze UI 为可选外部演示，不影响核心 API |
-| 11 | 已实现并完成本地容器验收 | 非 root、health、PostgreSQL/Redis/worker、SIGTERM draining、CI 扫描、OTel/metrics；见 `docs/docker-acceptance-2026-07-16.md` | 本地 Colima 四服务、事务、队列与优雅关闭已通过；生产压力/故障演练仍待外部环境 |
+| 11 | 已实现并完成本地容器验收 | 非 root、health、PostgreSQL/Redis/worker、SIGTERM draining、CI 扫描、OTel/metrics；见 `docker-acceptance-2026-07-16.md` | 本地 Colima 四服务、事务、队列与优雅关闭已通过；生产压力/故障演练仍待外部环境 |
 | 12 | 已实现（代码/文档） | 离线 golden paths、3 ADR、威胁模型、容量成本、demo/答辩文档 | 视频、真实 before/after、全新 clone 计时和 Release tag 必须人工完成 |
 
 “已实现”仅表示仓库内离线代码与确定性测试完成，不等于真实账号联调或生产上线。

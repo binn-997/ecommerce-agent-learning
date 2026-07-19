@@ -21,8 +21,8 @@
 按任务范围阅读以下文件：
 
 1. `README.md`：当前架构、已实现能力、快速运行和代码地图；
-2. `LEARNING_PLAN.md`：12 周里程碑、15 阶段覆盖和简历升级门槛；
-3. `DOCKER_BEGINNER_GUIDE.md`：容器、Gateway、Compose、部署和排错；
+2. `docs/LEARNING_PLAN.md`：12 周里程碑、15 阶段覆盖和简历升级门槛；
+3. `docs/DOCKER_BEGINNER_GUIDE.md`：容器、Gateway、Compose、部署和排错；
 4. `.env.example`：支持的环境变量；
 5. 需要修改的模块及对应测试。
 
@@ -45,8 +45,8 @@ ecommerce-agent-learning-plan/
 ├── docker-compose.yml        # gateway + postgres 本地编排
 ├── .env.example              # 环境变量模板，不含真实密钥
 ├── README.md                 # 面试官和使用者的项目入口
-├── LEARNING_PLAN.md          # 学习与交付路线
-└── DOCKER_BEGINNER_GUIDE.md  # Docker 零基础教材
+├── docs/LEARNING_PLAN.md          # 学习与交付路线
+└── docs/DOCKER_BEGINNER_GUIDE.md  # Docker 零基础教材
 ```
 
 放置规则：
@@ -190,7 +190,7 @@ python -m examples.04_listing_agent
 
 ## 8. Docker 与 Compose 操作规范
 
-macOS 使用 Colima 承载 Docker Engine。详细原理见 `DOCKER_BEGINNER_GUIDE.md`。
+macOS 使用 Colima 承载 Docker Engine。详细原理见 `docs/DOCKER_BEGINNER_GUIDE.md`。
 
 部署前：
 
@@ -265,8 +265,8 @@ docker compose down
 代码与文档必须保持一致：
 
 - 新增能力或入口：更新 `README.md` 的代码地图与运行方式；
-- 改变学习顺序或交付门槛：更新 `LEARNING_PLAN.md`；
-- 改变 Dockerfile、Compose、端口、服务名或数据卷：同步更新 `DOCKER_BEGINNER_GUIDE.md`；
+- 改变学习顺序或交付门槛：更新 `docs/LEARNING_PLAN.md`；
+- 改变 Dockerfile、Compose、端口、服务名或数据卷：同步更新 `docs/DOCKER_BEGINNER_GUIDE.md`；
 - 新增环境变量：更新 `.env.example`，只放空值或安全默认值；
 - 改变 API 契约：提供请求/响应示例并更新测试；
 - 未完成的能力不得在 README 或简历表述中写成已经完成。
