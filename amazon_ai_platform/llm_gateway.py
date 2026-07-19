@@ -55,10 +55,17 @@ class GatewayMetrics:
             "amazon_ai_gateway_fallbacks_total": self.fallbacks,
             "amazon_ai_gateway_prompt_tokens_total": self.prompt_tokens,
             "amazon_ai_gateway_completion_tokens_total": self.completion_tokens,
-            "amazon_ai_gateway_estimated_cost_usd_total": round(self.estimated_cost_usd, 8),
+            "amazon_ai_gateway_estimated_cost_usd_total": round(
+                self.estimated_cost_usd, 8
+            ),
             "amazon_ai_gateway_latency_p95_ms": p95,
         }
-        return "\n".join(f"# TYPE {name} gauge\n{name} {value}" for name, value in values.items()) + "\n"
+        return (
+            "\n".join(
+                f"# TYPE {name} gauge\n{name} {value}" for name, value in values.items()
+            )
+            + "\n"
+        )
 
 
 class Message(BaseModel):
@@ -130,6 +137,20 @@ class LLMProvider(Protocol):
     ) -> ProviderResult: ...
 
 
+def _strict_json_schema(value: Any) -> Any:
+    """Adapt Pydantic JSON Schema to strict provider output requirements."""
+    if isinstance(value, list):
+        return [_strict_json_schema(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    strict = {key: _strict_json_schema(item) for key, item in value.items()}
+    properties = strict.get("properties")
+    if strict.get("type") == "object" and isinstance(properties, dict):
+        strict["additionalProperties"] = False
+        strict["required"] = list(properties)
+    return strict
+
+
 class AnthropicProvider:
     name = "anthropic"
 
@@ -137,15 +158,25 @@ class AnthropicProvider:
         self.api_key, self.http = api_key, http
 
     async def complete(
-        self, request: ChatCompletionRequest, *, model: str, schema: dict[str, Any] | None
+        self,
+        request: ChatCompletionRequest,
+        *,
+        model: str,
+        schema: dict[str, Any] | None,
     ) -> ProviderResult:
         system_parts = [m.content for m in request.messages if m.role == "system"]
         messages = [m.model_dump() for m in request.messages if m.role != "system"]
+        payload: dict[str, Any] = {
+            "model": model,
+            "system": "\n\n".join(system_parts),
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+        }
         if schema:
-            system_parts.append(
-                "Return only JSON that validates against this schema: "
-                + json.dumps(schema, ensure_ascii=False)
-            )
+            payload["output_config"] = {
+                "format": {"type": "json_schema", "schema": schema}
+            }
         response = await self.http.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -153,21 +184,21 @@ class AnthropicProvider:
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
-            json={
-                "model": model,
-                "system": "\n\n".join(system_parts),
-                "messages": messages,
-                "temperature": request.temperature,
-                "max_tokens": request.max_tokens,
-            },
+            json=payload,
         )
         if response.status_code in {401, 402, 403, 429}:
-            raise ProviderEscalation(f"Anthropic requires operator review (HTTP {response.status_code})")
+            raise ProviderEscalation(
+                f"Anthropic requires operator review (HTTP {response.status_code})"
+            )
         if response.status_code >= 400:
             raise ProviderUnavailable(f"Anthropic HTTP {response.status_code}")
         try:
             body = response.json()
-            text_blocks = [part.get("text", "") for part in body.get("content", []) if part.get("type") == "text"]
+            text_blocks = [
+                part.get("text", "")
+                for part in body.get("content", [])
+                if part.get("type") == "text"
+            ]
             usage = body.get("usage", {})
         except (ValueError, AttributeError, TypeError) as exc:
             raise ProviderUnavailable("Anthropic returned an invalid response") from exc
@@ -179,35 +210,110 @@ class AnthropicProvider:
         )
 
 
-class OpenAICompatibleProvider:
-    def __init__(self, name: str, api_key: str, base_url: str, http: httpx.AsyncClient) -> None:
-        self.name, self.api_key, self.base_url, self.http = name, api_key, base_url.rstrip("/"), http
+class OpenAIResponsesProvider:
+    name = "openai"
+
+    def __init__(self, api_key: str, http: httpx.AsyncClient) -> None:
+        self.api_key, self.http = api_key, http
 
     async def complete(
-        self, request: ChatCompletionRequest, *, model: str, schema: dict[str, Any] | None
+        self,
+        request: ChatCompletionRequest,
+        *,
+        model: str,
+        schema: dict[str, Any] | None,
     ) -> ProviderResult:
         payload: dict[str, Any] = {
             "model": model,
-            "messages": [message.model_dump() for message in request.messages],
-            "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
+            "input": [message.model_dump() for message in request.messages],
+            "max_output_tokens": request.max_tokens,
+            "store": False,
         }
         if schema:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": "listing_variant", "strict": True, "schema": schema},
+            payload["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": "listing_variant",
+                    "strict": True,
+                    "schema": schema,
+                }
             }
         response = await self.http.post(
-            f"{self.base_url}/chat/completions",
+            "https://api.openai.com/v1/responses",
             headers={"Authorization": f"Bearer {self.api_key}"},
             json=payload,
         )
         if response.status_code in {401, 402, 403, 429}:
             raise ProviderEscalation(
-                f"{self.name} requires operator review (HTTP {response.status_code})"
+                f"OpenAI requires operator review (HTTP {response.status_code})"
             )
         if response.status_code >= 400:
-            raise ProviderUnavailable(f"{self.name} HTTP {response.status_code}")
+            raise ProviderUnavailable(f"OpenAI HTTP {response.status_code}")
+        try:
+            body = response.json()
+            usage = body.get("usage", {})
+            content = "".join(
+                str(part.get("text", ""))
+                for item in body.get("output", [])
+                if item.get("type") == "message"
+                for part in item.get("content", [])
+                if part.get("type") == "output_text"
+            )
+            if not content:
+                raise ValueError("response contained no output_text")
+            return ProviderResult(
+                content=content,
+                model=str(body.get("model", model)),
+                prompt_tokens=int(usage.get("input_tokens", 0)),
+                completion_tokens=int(usage.get("output_tokens", 0)),
+            )
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ProviderUnavailable("OpenAI returned an invalid response") from exc
+
+
+class DeepSeekChatProvider:
+    name = "deepseek"
+
+    def __init__(self, api_key: str, http: httpx.AsyncClient) -> None:
+        self.api_key, self.http = api_key, http
+
+    async def complete(
+        self,
+        request: ChatCompletionRequest,
+        *,
+        model: str,
+        schema: dict[str, Any] | None,
+    ) -> ProviderResult:
+        messages = [message.model_dump() for message in request.messages]
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+        }
+        if schema:
+            payload["messages"] = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Return only one valid JSON object matching this JSON Schema: "
+                        + json.dumps(schema, ensure_ascii=False)
+                    ),
+                },
+                *messages,
+            ]
+            payload["response_format"] = {"type": "json_object"}
+        response = await self.http.post(
+            "https://api.deepseek.com/chat/completions",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            json=payload,
+        )
+        if response.status_code in {401, 402, 403, 429}:
+            raise ProviderEscalation(
+                f"DeepSeek requires operator review (HTTP {response.status_code})"
+            )
+        if response.status_code >= 400:
+            raise ProviderUnavailable(f"DeepSeek HTTP {response.status_code}")
         try:
             body = response.json()
             usage = body.get("usage", {})
@@ -218,7 +324,7 @@ class OpenAICompatibleProvider:
                 completion_tokens=int(usage.get("completion_tokens", 0)),
             )
         except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
-            raise ProviderUnavailable(f"{self.name} returned an invalid response") from exc
+            raise ProviderUnavailable("DeepSeek returned an invalid response") from exc
 
 
 @dataclass
@@ -279,7 +385,7 @@ class ModelRouter:
         if request.response_format is None:
             return None
         if request.response_format.name == "listing_variant":
-            return ListingVariant.model_json_schema()
+            return _strict_json_schema(ListingVariant.model_json_schema())
         raise GatewayError("unregistered output schema")
 
     @staticmethod
@@ -290,7 +396,9 @@ class ModelRouter:
             data = json.loads(content)
             model = ListingVariant.model_validate(data)
         except (json.JSONDecodeError, ValidationError) as exc:
-            raise ProviderUnavailable(f"provider returned invalid structured output: {exc}") from exc
+            raise ProviderUnavailable(
+                f"provider returned invalid structured output: {exc}"
+            ) from exc
         return model.model_dump_json()
 
     async def complete(
@@ -300,7 +408,9 @@ class ModelRouter:
         if targets is None:
             raise GatewayError(f"unknown model alias: {request.model}")
         if not targets:
-            raise ProviderUnavailable(f"no providers configured for alias: {request.model}")
+            raise ProviderUnavailable(
+                f"no providers configured for alias: {request.model}"
+            )
         failures: list[str] = []
         async with self.semaphore:
             for fallback_count, target in enumerate(targets):
@@ -320,16 +430,24 @@ class ModelRouter:
                         result.prompt_tokens * self.input_cost_per_million
                         + result.completion_tokens * self.output_cost_per_million
                     ) / 1_000_000
-                    return ProviderResult(
-                        content=validated,
-                        model=result.model,
-                        prompt_tokens=result.prompt_tokens,
-                        completion_tokens=result.completion_tokens,
-                    ), target.provider.name, fallback_count
+                    return (
+                        ProviderResult(
+                            content=validated,
+                            model=result.model,
+                            prompt_tokens=result.prompt_tokens,
+                            completion_tokens=result.completion_tokens,
+                        ),
+                        target.provider.name,
+                        fallback_count,
+                    )
                 except ProviderEscalation:
                     self.metrics.provider_failures += 1
                     raise
-                except (ProviderUnavailable, httpx.HTTPError, asyncio.TimeoutError) as exc:
+                except (
+                    ProviderUnavailable,
+                    httpx.HTTPError,
+                    asyncio.TimeoutError,
+                ) as exc:
                     self._record_failure(target.provider.name)
                     self.metrics.provider_failures += 1
                     failures.append(f"{target.provider.name}: {str(exc)[:120]}")
@@ -366,9 +484,15 @@ def create_app(router: ModelRouter) -> FastAPI:
         return PlainTextResponse(router.metrics.prometheus())
 
     @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
-    async def chat_completion(payload: ChatCompletionRequest, raw_request: Request) -> ChatCompletionResponse:
+    async def chat_completion(
+        payload: ChatCompletionRequest, raw_request: Request
+    ) -> ChatCompletionResponse:
         supplied_id = raw_request.headers.get("x-request-id", "")[:128]
-        request_id = supplied_id if supplied_id.replace("-", "").replace("_", "").isalnum() else str(uuid.uuid4())
+        request_id = (
+            supplied_id
+            if supplied_id.replace("-", "").replace("_", "").isalnum()
+            else str(uuid.uuid4())
+        )
         started = time.perf_counter()
         router.metrics.requests += 1
         with TRACER.start_as_current_span("chat_completion") as span:
@@ -410,16 +534,37 @@ def app_from_environment() -> FastAPI:
     http = httpx.AsyncClient(timeout=httpx.Timeout(45, connect=10))
     targets: list[RouteTarget] = []
     if key := os.getenv("ANTHROPIC_API_KEY"):
-        targets.append(RouteTarget(AnthropicProvider(key, http), os.getenv("ANTHROPIC_MODEL", "claude-sonnet-latest")))
+        targets.append(
+            RouteTarget(
+                AnthropicProvider(key, http),
+                os.getenv("ANTHROPIC_MODEL", "claude-sonnet-latest"),
+            )
+        )
     if key := os.getenv("DEEPSEEK_API_KEY"):
-        targets.append(RouteTarget(OpenAICompatibleProvider("deepseek", key, "https://api.deepseek.com", http), os.getenv("DEEPSEEK_MODEL", "deepseek-chat")))
+        targets.append(
+            RouteTarget(
+                DeepSeekChatProvider(key, http),
+                os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+            )
+        )
     if key := os.getenv("OPENAI_API_KEY"):
-        targets.append(RouteTarget(OpenAICompatibleProvider("openai", key, "https://api.openai.com/v1", http), os.getenv("OPENAI_MODEL", "gpt-4.1-mini")))
-    return create_app(ModelRouter(
-        {"listing-quality": targets},
-        input_cost_per_million=float(os.getenv("MODEL_INPUT_COST_PER_MILLION_USD", "0")),
-        output_cost_per_million=float(os.getenv("MODEL_OUTPUT_COST_PER_MILLION_USD", "0")),
-    ))
+        targets.append(
+            RouteTarget(
+                OpenAIResponsesProvider(key, http),
+                os.getenv("OPENAI_MODEL", "gpt-5.6-terra"),
+            )
+        )
+    return create_app(
+        ModelRouter(
+            {"listing-quality": targets},
+            input_cost_per_million=float(
+                os.getenv("MODEL_INPUT_COST_PER_MILLION_USD", "0")
+            ),
+            output_cost_per_million=float(
+                os.getenv("MODEL_OUTPUT_COST_PER_MILLION_USD", "0")
+            ),
+        )
+    )
 
 
 app = app_from_environment()

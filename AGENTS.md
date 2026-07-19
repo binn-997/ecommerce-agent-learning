@@ -21,8 +21,8 @@
 按任务范围阅读以下文件：
 
 1. `README.md`：当前架构、已实现能力、快速运行和代码地图；
-2. `LEARNING_PLAN.md`：12 周里程碑、15 阶段覆盖和简历升级门槛；
-3. `DOCKER_BEGINNER_GUIDE.md`：容器、Gateway、Compose、部署和排错；
+2. `docs/LEARNING_PLAN.md`：12 周里程碑、15 阶段覆盖和简历升级门槛；
+3. `docs/DOCKER_BEGINNER_GUIDE.md`：容器、Gateway、Compose、部署和排错；
 4. `.env.example`：支持的环境变量；
 5. 需要修改的模块及对应测试。
 
@@ -34,19 +34,25 @@
 ecommerce-agent-learning-plan/
 ├── amazon_ai_platform/       # 可复用的生产代码
 │   ├── models.py             # 跨模块共享的 Pydantic 数据契约
-│   ├── spapi.py              # SP-API 鉴权、限流、重试、报表拉取
+│   ├── spapi.py / ads.py     # Amazon 销售与广告报表客户端
+│   ├── pipeline.py           # raw→标准指标、事务与幂等持久化
+│   ├── data_quality.py       # CSV 校验、质量规则与 reconciliation
 │   ├── feishu.py             # 飞书卡片、Bitable 和指令处理
 │   ├── llm_gateway.py        # FastAPI 多模型统一网关
-│   └── listing_agent.py      # LangGraph Listing 决策流程
+│   ├── listing_agent.py      # LangGraph Listing 决策流程
+│   ├── prompts.py / rag.py   # 版本化 Prompt、规则知识库与评测
+│   ├── mcp_server.py         # 只读 MCP 工具与认证上下文
+│   ├── business_api.py       # webhook/API 组装
+│   └── worker.py / telemetry.py # Redis worker、遥测与优雅退出
 ├── examples/                 # 薄的可运行示例，不承载核心业务逻辑
 ├── tests/                    # 离线、确定性的 pytest 测试
 ├── sql/init.sql              # PostgreSQL 初始化脚本
 ├── Dockerfile                # gateway 镜像构建定义
-├── docker-compose.yml        # gateway + postgres 本地编排
+├── docker-compose.yml        # gateway + worker + postgres + redis 编排
 ├── .env.example              # 环境变量模板，不含真实密钥
 ├── README.md                 # 面试官和使用者的项目入口
-├── LEARNING_PLAN.md          # 学习与交付路线
-└── DOCKER_BEGINNER_GUIDE.md  # Docker 零基础教材
+├── docs/LEARNING_PLAN.md          # 学习与交付路线
+└── docs/DOCKER_BEGINNER_GUIDE.md  # Docker 零基础教材
 ```
 
 放置规则：
@@ -95,7 +101,11 @@ ecommerce-agent-learning-plan/
 
 provider 特有的请求与响应必须封装在 adapter 边界内，不得污染共享业务模型。新增 provider 时应复用统一协议并添加 fallback 测试。
 
-### 4.4 LangGraph Decision Engine
+### 4.4 Data, Ads 与 Runtime
+
+`pipeline.py` 将销售、订单和广告数据以 raw/standard/metric 分层处理，事务仓储支持回滚与游标；`data_quality.py` 负责 synthetic CSV 的结构、ASIN、金额和 reconciliation 检查。`ads.py` 只生成带证据和归因窗口保护的待审广告建议。`worker.py` 消费 Redis 任务并在 SIGTERM 时 draining；`business_api.py` 提供 webhook 入口，`telemetry.py`/`observability.py` 统一 trace、指标和脱敏事件。
+
+### 4.5 LangGraph Decision Engine
 
 Listing Agent 至少包含：
 
@@ -154,6 +164,9 @@ source .venv/bin/activate
 pytest
 ruff check amazon_ai_platform tests examples
 python -m examples.04_listing_agent
+python -m examples.05_amazon_ads_client --demo
+python -m examples.06_rag_knowledge_base --demo
+alembic upgrade head --sql > /tmp/amazon-ai-migration.sql
 ```
 
 如果只修改文档，至少运行：
@@ -190,7 +203,7 @@ python -m examples.04_listing_agent
 
 ## 8. Docker 与 Compose 操作规范
 
-macOS 使用 Colima 承载 Docker Engine。详细原理见 `DOCKER_BEGINNER_GUIDE.md`。
+macOS 使用 Colima 承载 Docker Engine。详细原理见 `docs/DOCKER_BEGINNER_GUIDE.md`。
 
 部署前：
 
@@ -224,7 +237,7 @@ docker compose down
 - 未经用户明确要求，不执行 `docker compose down -v`；
 - 未经确认，不执行 `docker system prune -a --volumes` 等广泛清理；
 - 排错优先查看 `docker compose ps -a`、`logs` 和 `config`；
-- 容器间使用 Compose 服务名通信，例如 `postgres:5432`；
+- Compose 目前包含 `gateway`、`worker`、`postgres`、`redis`；容器间使用服务名通信，例如 `postgres:5432`、`redis:6379`；
 - 完成验证后说明容器是否仍在运行，不把后台服务状态留给用户猜测。
 
 ## 9. 配置、密钥和数据安全
@@ -265,8 +278,8 @@ docker compose down
 代码与文档必须保持一致：
 
 - 新增能力或入口：更新 `README.md` 的代码地图与运行方式；
-- 改变学习顺序或交付门槛：更新 `LEARNING_PLAN.md`；
-- 改变 Dockerfile、Compose、端口、服务名或数据卷：同步更新 `DOCKER_BEGINNER_GUIDE.md`；
+- 改变学习顺序或交付门槛：更新 `docs/LEARNING_PLAN.md`；
+- 改变 Dockerfile、Compose、端口、服务名或数据卷：同步更新 `docs/DOCKER_BEGINNER_GUIDE.md`；
 - 新增环境变量：更新 `.env.example`，只放空值或安全默认值；
 - 改变 API 契约：提供请求/响应示例并更新测试；
 - 未完成的能力不得在 README 或简历表述中写成已经完成。
@@ -276,7 +289,7 @@ docker compose down
 ## 12. Git 和提交规则
 
 - 开工前执行 `git status --short` 和 `git branch --show-current`；
-- 当前工作目标分支为 `codex/new`，不得切换或扰乱原分支；
+- 开工后保持当前工作分支，不擅自切换或扰乱用户原分支；若需创建分支，使用 `codex/` 前缀；
 - 工作区可能存在用户自己的 staged、modified 或 untracked 文件；
 - 只暂存本任务明确修改的路径，不使用无差别 `git add .`；
 - 不覆盖、删除、回滚或提交与任务无关的用户改动；

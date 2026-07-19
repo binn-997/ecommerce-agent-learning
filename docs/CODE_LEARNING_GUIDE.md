@@ -1,7 +1,7 @@
 # Amazon AI Platform 逐代码学习手册
 
 > 这是一份“打开源码、运行测试、做一个小改动、解释结果”的学习手册。<br>
-> 它不重复 [README.md](README.md) 的项目展示，也不重复 [LEARNING_PLAN.md](LEARNING_PLAN.md) 的 12 周交付计划。
+> 它不重复 [README.md](../README.md) 的项目展示，也不重复 [LEARNING_PLAN.md](LEARNING_PLAN.md) 的 12 周交付计划。
 
 ## 1. 这份手册怎么用
 
@@ -200,9 +200,20 @@ PY
 ### 4.5 复盘题
 
 1. 为什么金额使用 `Decimal`，而最终比例可以是 `float`？
+
+   **参考答案：** 金额需要十进制精确性。例如二进制浮点数不能精确表示 `0.1`，连续求和可能产生肉眼难以理解的尾差；`Decimal` 能按财务口径保存和计算金额。比例通常用于监控、排序或展示，允许极小的浮点误差，而且许多指标接口最终就是 `float`。关键原则是：先用 `Decimal` 完成金额计算，再在明确的边界转换比例，不要把 `float` 计算结果重新当作账务金额。
+
 2. 为什么 `OrderSnapshot.raw_payload` 设置 `exclude=True`？
+
+   **参考答案：** 原始 Amazon 响应用于追查解析问题，但可能包含当前业务输出不需要的字段，甚至包含 Buyer PII。`exclude=True` 让 `model_dump()`、API 响应、日志和模型输入默认不携带它，减少误泄漏和上下文污染；需要审计原始证据时，应走受权限保护的专用存储，而不是普通序列化路径。对应契约在 `models.py::OrderSnapshot`。
+
 3. 为什么 `ListingDraft.requires_human_review` 默认是 `True`？
+
+   **参考答案：** Listing 更新会影响合规、搜索流量和真实销售，属于高风险动作。默认 `True` 使用“安全失败”原则：调用方即使忘记设置，也只能得到待审草稿。`ListingOptimizationAgent` 始终生成待审结果，MCP 层还会拒绝后端返回的非待审草稿；人工 `approve` 只记录决定，不授予自动发布权限。2026 新规下的 75 字符 Title 和 125 字符 Item Highlight 也必须一起人工核对。
+
 4. 如果增加“退货率”，分母为 0 时应返回什么？
+
+   **参考答案：** 应返回 `None`，表示“没有足够分母，指标无定义”，而不是返回 `0`。零订单时的 `0%` 会错误暗示“存在订单且没有退货”。展示层可以把 `None` 显示为 `N/A`，并保留订单数作为解释证据。可复用 `models.py::safe_ratio` 的语义。
 
 完成标准：能从任意一个输出模型向前追溯它依赖的 Standard/Raw 数据，并能解释至少三条 Pydantic 业务约束。
 
@@ -273,9 +284,20 @@ pytest tests/test_data_quality.py::test_quality_gate_reports_multiple_bad_fields
 ### 5.5 复盘题
 
 1. “CSV 能被 pandas 读取”为什么不等于数据可信？
+
+   **参考答案：** 可读取只证明语法大致成立，不证明业务语义正确。日期可能超出导入窗口，SKU 可能未知，币种可能不符，units 可能为负数，同一天同 SKU 可能重复，parent/child ASIN 也可能相同。`audit_sales_rows` 的 20 条规则验证的是这些业务事实；通过后还要标准化、幂等写入并与 Seller Central 总额对账。
+
 2. DQ19 为什么是 warning，而负收入是 error？
+
+   **参考答案：** “销量大于 0 但收入为 0”可能来自赠品、促销、替换件或报表时间差，值得人工调查但不一定是假数据，所以 DQ19 是 warning。当前 Sales & Traffic 标准层把 revenue 定义为非负销售收入，负值违反该数据集的合同，可能意味着列映射错误或把退款报表混入，因此 DQ15 是 error。若未来接入退款数据，应建立独立合同，而不是放宽现有字段含义。
+
 3. 如果 Seller Central 总额本身为 0，reconciliation 应怎样解释？
+
+   **参考答案：** 不能计算相对差异率，所以 `difference_ratio` 应为 `None`。如果标准化总额也为 0，则绝对差额为 0，可以判定对账通过；如果标准化总额非 0，则对账失败，并报告绝对差额，不能用除零后的伪比例。当前 `reconcile_revenue` 正是这样处理。
+
 4. 幂等键应该在内存、数据库还是两处都存在？
+
+   **参考答案：** 业务键定义应在领域模型中清晰可见，数据库唯一约束/`ON CONFLICT` 才是生产环境的最终保证。内存字典只适合离线测试和单进程演示，无法阻止多进程或多机器并发重复写。项目用 `(metric_date, sku)` 同时驱动内存测试替身和 PostgreSQL upsert，使测试语义与生产约束一致。
 
 完成标准：能解释 20 条规则中至少 10 条的业务原因，并能设计一个新的稳定业务键。
 
@@ -376,9 +398,20 @@ python -m examples.01_spapi_client
 ### 6.7 复盘题
 
 1. 为什么 async 函数中不能使用 `time.sleep`？
+
+   **参考答案：** `time.sleep` 会阻塞整个事件循环线程，睡眠期间其他请求、token 刷新和报表轮询都不能运行，异步并发会退化成串行。`await asyncio.sleep()` 会把控制权交回事件循环，让其他协程继续执行。网络等待也应使用异步客户端并设置明确 timeout。
+
 2. 为什么网络错误可重试，而 403 默认不重试？
+
+   **参考答案：** timeout、连接重置、429 和部分 5xx 往往是瞬时故障，经过有上限的抖动退避可能恢复。403 通常表示角色、scope、应用授权或 RDT 不满足，等待不会改变权限；盲目重试只会放大流量并掩盖配置错误。因此应携带 operation/request context 升级人工处理，同时避免在异常中泄漏 token。
+
 3. report window cache key 为什么要包含 seller、marketplace、type、日期和 options？
+
+   **参考答案：** 这些字段共同决定“这是哪一份报表”。少 seller 会造成跨租户串数据，少 marketplace 会混站点，少 report type 会混口径，少日期会复用错误时间窗，少 options 会忽略聚合粒度等请求差异。完整稳定键既防止重复创建报表，也防止更危险的错误缓存命中。
+
 4. 如果两个 worker 同时创建相同报表，仅内存缓存够不够？生产环境应放在哪里？
+
+   **参考答案：** 不够。两个 worker 有独立内存，都可能先看到 cache miss，然后各自创建报表。生产环境应把稳定报表键放入共享存储，例如 PostgreSQL 唯一约束的 report-jobs 表，或带原子 `SET NX`/租约的 Redis；创建状态、report ID、过期时间和失败状态也应持久化。数据库唯一约束仍应作为最后一道并发保护。
 
 完成标准：能白板画出 token 刷新、429 重试和报表状态机，并能解释每一个停止重试的条件。
 
@@ -465,12 +498,14 @@ pytest tests/test_pipeline.py::test_replay_is_idempotent_and_trace_reaches_raw_r
 
 ```text
 HTTP contract：ChatCompletionRequest / ChatCompletionResponse
-Provider adapter：AnthropicProvider / OpenAICompatibleProvider
+Provider adapter：AnthropicProvider / DeepSeekChatProvider / OpenAIResponsesProvider
 Routing policy：ModelRouter / RouteTarget / CircuitState
 Web application：create_app / app_from_environment
 ```
 
 Provider 特有字段只应出现在 adapter。业务方只使用 OpenAI 风格消息、服务端注册 Schema 和统一响应。
+
+当前三种 provider 协议并不相同：OpenAI 使用 Responses API 的 `input`、`text.format` 和 typed `output`；Anthropic 使用 Messages API 的 `output_config.format`；DeepSeek 使用 Chat Completions 的 `json_object` 模式。网关对外仍保留 `/v1/chat/completions` 兼容契约，adapter 负责协议翻译，Pydantic 负责第二次本地校验。
 
 ### 8.2 Structured Output 的三层保证
 
@@ -583,8 +618,16 @@ pytest tests/test_prompts.py::test_prompt_version_diff_identifies_regression -q
 ### 9.4 复盘题
 
 1. 为什么西服和宠物类目要分别评测？
+
+   **参考答案：** 两个类目的词汇、材料、使用场景和合规风险不同。只测宠物类可能让 Prompt 在西服尺码、版型和场景表达上退化，反之亦然。分层统计还能发现“总通过率没变，但某一类目明显变差”的平均数掩盖问题。项目用 20 条西服和 20 条宠物 synthetic case 做最低回归集。
+
 2. 什么指标适合阻断 CI，什么指标只适合观察？
+
+   **参考答案：** 可确定、可重复且错误代价高的指标适合阻断 CI，例如 schema pass rate、硬规则通过率、block 漏检数和必需引用准确率。措辞自然度、人工偏好率等主观指标受评审者和样本变化影响，更适合观察趋势或人工发布门槛。关键词覆盖率可按业务风险设置硬门槛，但不能为了覆盖而鼓励堆词。
+
 3. Prompt 版本变了但 schema 不变，为什么仍需要回归？
+
+   **参考答案：** Schema 只约束输出形状，不保证事实正确、关键词覆盖、引用准确或不出现违规宣传。Prompt 的一个词就可能改变模型行为，即使 JSON 字段完全相同。每次版本变化都应在相同 golden cases 上比较 baseline 与 candidate，并保留版本号和失败 case ID，才能定位行为回归。
 
 完成标准：能新增一条 golden case，并能用差异报告说明 candidate 相对 baseline 改善或退化在哪里。
 
@@ -972,7 +1015,7 @@ curl http://127.0.0.1:8000/metrics
 docker compose down
 ```
 
-普通 `down` 保留命名卷。不要在学习验收中使用 `docker compose down -v`，除非明确希望删除数据库与 Redis 数据。更详细的 Docker 原理见 [DOCKER_BEGINNER_GUIDE.md](DOCKER_BEGINNER_GUIDE.md)，本机实测证据见 [docs/docker-acceptance-2026-07-16.md](docs/docker-acceptance-2026-07-16.md)。
+普通 `down` 保留命名卷。不要在学习验收中使用 `docker compose down -v`，除非明确希望删除数据库与 Redis 数据。更详细的 Docker 原理见 [DOCKER_BEGINNER_GUIDE.md](DOCKER_BEGINNER_GUIDE.md)，本机实测证据见 [docker-acceptance-2026-07-16.md](docker-acceptance-2026-07-16.md)。
 
 完成标准：能解释 healthcheck、depends_on、命名卷、非 root 和 graceful shutdown 各自解决的风险。
 
@@ -1167,17 +1210,52 @@ docker compose config --quiet
 不看代码，尝试回答：
 
 1. Raw、Standard、Metric 三层分别保护什么？
+
+   **参考答案：** Raw 层忠实保存外部原值，保护可追溯性；Standard 层完成类型、币种、日期和非负约束，保护统一口径；Metric 层从可信标准数据计算 ACOS、CVR 等派生指标，保护计算定义。分层后，来源错误、清洗错误和公式错误可以分别定位。
+
 2. 双检锁为什么能避免并发 token 刷新？
+
+   **参考答案：** 第一次检查让有效 token 直接返回；过期时只有一个协程取得锁并刷新。其他协程排队取得锁后进行第二次检查，会发现前一个协程已写入新 token，因此直接复用，不再重复调用 LWA。锁内必须再次检查，否则等待者仍会依次刷新。
+
 3. 429、403、timeout 和非法 JSON 分别怎样处理？
+
+   **参考答案：** 429 按限流策略和抖动退避进行有上限重试；403 视为权限/授权问题，停止重试并升级人工；timeout 对明确可恢复的读操作有限重试，达到上限后抛出带 operation context 的异常；非法 JSON 不能进入业务层，在 Multi-LLM Gateway 中会让当前 Provider 失败并尝试 fallback，全部失败则返回安全的 503。所有错误信息都不能包含密钥或 PII。
+
 4. 为什么 `(metric_date, sku)` 比 UUID 更适合作为报表幂等键？
+
+   **参考答案：** 日期与 SKU 描述的是同一条业务事实，重复导入时值保持不变；随机 UUID 每次运行都会变化，只能标识一次写入，不能识别重复事实。稳定业务键配合数据库唯一约束和 upsert，才能让重跑覆盖同一记录。
+
 5. 为什么 transaction 必须同时包含 raw、upsert 和 cursor？
+
+   **参考答案：** 三者描述同一次同步的证据、结果和进度。如果指标写到一半但 cursor 已前移，重跑会跳过缺失数据；如果指标成功但 raw 丢失，无法审计；如果 raw 成功而指标失败，会留下误导性的半完成状态。放在同一事务中可以全部提交或全部回滚。
+
 6. Structured Output 为什么仍需本地 Pydantic 验证？
+
+   **参考答案：** Provider 接受 JSON Schema 只是请求约束，不是可信保证；模型、adapter 或网络响应仍可能返回非法 JSON、漏字段或超限内容。本地 Pydantic 是进入业务逻辑前的信任边界。当前 `ListingVariant` 会再次检查 Title 最多 75 字符、Item Highlight 最多 125 字符、恰好五条且互不重复的 bullets。
+
 7. RAG 为什么在相似度计算前做时间和权限过滤？
+
+   **参考答案：** 高相似度不代表规则当前有效或调用者有权查看。先过滤 effective date、marketplace、category 和 scope，可防止过期政策或私有 SOP 成为候选内容，也降低通过分数、排序甚至拒答差异泄漏文档存在性的风险。过滤后再做相似度排序，答案才是“相关且允许使用”的证据。
+
 8. Listing Agent 为什么 approve 后仍不发布？
+
+   **参考答案：** `approve` 表示人认可草稿，不等于系统获得 Amazon 写权限。当前 Agent 的职责边界是生成、检查和记录审核；`HumanReviewRecord.publishes_listing` 被固定为 `False`，MCP 也只暴露 `listing:draft`。真实发布还需要独立权限、二次确认、幂等键、审计和回滚机制，本项目没有假装已实现这些条件。
+
 9. 飞书“记录幂等”和“通知去重”有什么区别？
+
+   **参考答案：** 记录幂等保证同一业务事实只对应一条 Bitable 记录，例如用 `AmazonOrderId` 或 `source_key` 查找后 update/create；通知去重保证同一告警状态不会反复向群里发卡片。记录可以被更新但仍保持一条，只有严重级别或处理状态变化时才可能再次通知。两者解决的是数据重复和消息噪声两个不同问题。
+
 10. 广告归因窗口未闭合时为什么不能立即关词？
+
+    **参考答案：** 广告点击后的订单可能延迟归因，窗口未闭合时 attributed sales 偏低，ACOS 会被暂时高估。立即关词可能误杀之后会产生订单的流量。当前代码在报表结束不足 14 天时明确标注归因延迟，只生成继续观察的待审批建议，`executable=False`，不自动修改 bid 或 budget。
+
 11. MCP 为什么不能让模型传 seller ID？
+
+    **参考答案：** 模型参数是不可信输入，可能被 prompt injection 改成另一个 seller，从而造成越权读取。seller、marketplace 和 scopes 必须来自经过认证的 `AuthContext`，工具参数只描述 SKU、日期等业务查询。服务端先检查最小 scope，再把可信 tenant context 传给 backend，并只在结果和审计中记录 seller hash。
+
 12. SIGTERM 到达 worker 后，当前 job 和新 job 分别怎样处理？
+
+    **参考答案：** 当前实现收到 SIGTERM 后设置 `stopping`，不会取消正在执行的 `current_job`，而是等待它完成，再退出循环；退出后不再从 Redis 获取下一批任务，未取出的任务继续留在队列。需要注意一个实现细节：如果信号恰好发生在已经发出的 `BRPOP(timeout=1)` 等待期间，而该调用随后返回任务，当前代码仍可能再处理这一条任务；更严格的生产实现应在 `BRPOP` 返回后再次检查 `stopping`，必要时把任务可靠地放回队列或采用带 lease/ack 的队列协议。
 
 如果其中某题只能背结论，回到对应单元，重新做一次“小实验”。能根据代码、测试和失败现象解释原因，才算完成这一单元。
 
@@ -1199,4 +1277,4 @@ docker compose config --quiet
 - [ ] 单元 13：三条 Golden Path
 - [ ] 全量 pytest、Ruff、示例与 Compose 配置验收
 
-完成后再阅读 [docs/system-design-qa.md](docs/system-design-qa.md) 做面试追问练习；需要讲项目时使用 [docs/demo-script.md](docs/demo-script.md)，不要把演示稿当作代码学习资料。
+完成后再阅读 [system-design-qa.md](system-design-qa.md) 做面试追问练习；需要讲项目时使用 [demo-script.md](demo-script.md)，不要把演示稿当作代码学习资料。

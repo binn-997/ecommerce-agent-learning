@@ -77,7 +77,7 @@
 \section{职业背景}
 
 {\fontsize{9}{12}\selectfont
-计算机科学与技术专业，具备 Amazon 德国站运营、Python 自动化及 C++ 后端开发经验。围绕跨境电商场景开发 SP-API 数据管道、Multi-LLM Gateway 与 LangGraph 决策工作流，关注结构化输出、故障降级、可追溯性及 Human-in-the-Loop。
+计算机科学与技术专业，具备 Amazon 德国站一线运营与 Python 自动化开发经验，熟悉 Listing、关键词、广告、库存、利润及经营报表分析；能够将高频运营流程沉淀为 Excel 处理、模板上传、定价测算和 AI 辅助工具，并具备 Python 后端与 AI Agent 工程基础。
 }
 
 \vspace{1pt}
@@ -94,7 +94,7 @@
 \textbf{平台工程} &
   Multi-LLM Gateway、Provider Fallback、熔断、Docker Compose、PostgreSQL、Redis、OpenTelemetry \\[1pt]
 \textbf{跨境业务} &
-  Amazon SP-API、Ads Reporting、德国站 Listing、ACOS/CTR/CVR/TACOS、飞书 API \\[1pt]
+  Amazon Seller Central、广告控制台、德国站 Listing、Excel、ACOS/CTR/CVR/TACOS、飞书多维表格与 OpenAPI \\[1pt]
 \end{tabular}
 }
 
@@ -113,19 +113,21 @@
 
 \vspace{1pt}
 {\fontsize{9}{12}\selectfont
-负责 Amazon 德国站西服及宠物地毯类目运营，并结合 Python、飞书 OpenAPI 与大模型 API 开发运营自动化工具，将分散的销售、库存、广告数据转为可复用的日报与协作流程。
+负责 Amazon 德国站西服、连衣裙及宠物地毯等类目运营，覆盖选品调研、Listing 上架与优化、广告投放、库存及售后分析；同时独立开发 Amazon Listing Toolkit 等 Python 工具，解决模板处理、关键词整理、定价测算与经营复盘中的重复操作。
 }
 
 \begin{itemize}
-  \item {\fontsize{9}{12}\selectfont\textbf{店铺运营：}负责 Listing、关键词、广告与库存分析，店铺月 GMV 超 30,000 USD，西服品类月销超 15,000 USD，退款率控制在 4\% 以内。}
+  \item {\fontsize{9}{12}\selectfont\textbf{店铺经营：}通过 Seller Central 跟踪销量、流量、转化、退款及库存表现，负责新品资料整理、父子变体搭建、德国站 Listing 上架与日常维护；\textbf{店铺 6 月 GMV 超 35,000 USD，西服品类月销超 15,000 USD}，服装类目退款率约 11\%。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{报表处理工具：}使用 Python 批量读取销售、库存与广告导出文件，完成字段清洗、日期/数值转换和多表关联，统一 GMV、ACOS、CVR 等指标口径，减少重复 Excel 汇总。}
+  \item {\fontsize{9}{12}\selectfont\textbf{Listing 与关键词运营：}结合搜索词、竞品标题及产品卖点规划德语标题、五点和 Search Terms；定期查看流量与转化变化，调整核心词位置、图片和价格表达，并依据退货原因反查尺码、颜色及商品描述问题。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{分析与可视化：}按站点、类目、ASIN 和日期聚合经营指标，自动生成结构化日报及趋势图表，辅助定位库存风险、广告消耗和转化变化，并保留人工复核口径。}
+  \item {\fontsize{9}{12}\selectfont\textbf{广告与库存：}使用广告控制台维护自动/手动广告及关键词投放，根据搜索词表现进行否定、匹配方式及竞价调整；月度复盘口径下\textbf{广告 ACOS 约 15\%、TACOS 约 8.6\%、CTR 约 0.5\%、整体 CVR 约 10\%}，并结合库存报表与销售趋势识别滞销及断货风险，辅助制定补货和促销节奏。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{飞书自动化：}搭建多维表格、审批流与消息机器人，通过 OpenAPI 对接 ERP 数据；将报表结果同步到团队协作入口，减少跨系统复制和重复通知。}
+  \item {\fontsize{9}{12}\selectfont\textbf{Amazon Listing Toolkit（独立开发）：}\href{https://github.com/binn-997/Amazon-Listing-Toolkit}{\textcolor{blue}{\underline{GitHub 源码}}}；使用 Python、pandas、openpyxl 与 YAML 开发本地 CLI，支持 8 类服装产品配置、Amazon 模板字段映射、父子 SKU 数据继承、尺码规范化、英德颜色翻译与同款变体消歧，并按上传行数自动拆分工作簿，降低手工复制及模板错填风险。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{AI 日报草稿：}调用 DeepSeek API 将确定性计算后的指标组织为结构化日报，限制模型只负责归纳和解释，生成结果经人工确认后再用于团队协作。}
+  \item {\fontsize{9}{12}\selectfont\textbf{定价与报表自动化：}在工具中沉淀 DE/US/CA 站点扣点、汇率、采购及物流成本规则，批量核算利润率并反算目标售价；使用 Python 清洗销售、库存、广告 Excel，统一 GMV、ACOS、CVR 等指标口径，生成日报与趋势汇总。}
+
+  \item {\fontsize{9}{12}\selectfont\textbf{Prompt 与政策跟踪：}从热搜词网站拉取排名涨幅数据，清洗品牌词和无效词后整理连衣裙/半身裙德语词库并编写 Prompt；持续跟踪 Amazon Seller Forums 政策公告，依据 2026 年 7 月 27 日起非媒介类目“标题不超过 75 字符、Item Highlights 不超过 125 字符”的更新调整生成规则，结合站点与类目要求人工核验；同时使用飞书多维表格、审批及 DeepseekAPI 对接 ERP、同步运营结果。}
 
 \end{itemize}
 
@@ -151,28 +153,24 @@
 \noindent
 \begin{tabularx}{\textwidth}{@{}X r@{}}
 {\fontsize{10}{12}\selectfont\textbf{Amazon AI Platform——跨境电商全栈 AI 智能平台（个人实战项目）}} &
-% {\fontsize{10}{12}\selectfont 2026年1月 -- 2026年7月}
+{\fontsize{9}{12}\selectfont\href{https://github.com/binn-997/ecommerce-agent-learning}{\textcolor{blue}{\underline{GitHub 源码}}}}
 \end{tabularx}
 
 % \noindent{\fontsize{10}{12}\selectfont\textit{全栈 AI 工程师 / 系统架构师}} \hfill {\fontsize{10}{12}\selectfont\textit{深圳}}
 
 \vspace{1pt}
 {\fontsize{9}{12}\selectfont
-面向 Amazon 德国站独立设计可离线验证的 AI Agent 平台，将真实运营中的报表、Listing、广告分析和团队协作问题沉淀为可复用模块；核心链路已通过 mock 与回归测试，真实 Amazon、Ads 及飞书账号仍需另行联调。
+面向 Amazon 德国站独立设计可离线验证的 AI Agent 平台，将真实运营中的报表、Listing、广告分析和团队协作问题沉淀为可复用模块；核心链路已通过 mock 与回归测试。
 }
 
 \begin{itemize}
-  \item {\fontsize{9}{12}\selectfont\textbf{SP-API 数据引擎：}实现异步客户端，覆盖 LWA Token 缓存与并发刷新、按 operation 隔离的令牌桶，以及 429/可恢复 5xx 的全抖动重试；完成 Sales \& Traffic 报表创建、轮询、下载、GZIP 解压与 Pydantic 校验。}
+  \item {\fontsize{9}{12}\selectfont\textbf{数据与模型服务：}实现 SP-API 销售流量报表拉取、限流重试与结构化校验，并使用 FastAPI 统一接入多家 LLM，提供超时、熔断、Fallback 及 JSON Schema 输出校验。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{可信数据管道：}建立 raw、标准与指标三层数据契约，在事务内完成原始数据入库、标准化 upsert 与游标更新；以稳定业务键、request ID、文件哈希和 trace ID 支持幂等重跑、失败回滚与来源追踪。}
+  \item {\fontsize{9}{12}\selectfont\textbf{LangGraph 工作流：}将证据读取、德语卖点生成、确定性合规检查和人工审核拆分为状态节点，结合 checkpoint 与 request ID 支持中断恢复及幂等执行。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{Multi-LLM Gateway：}基于 FastAPI 实现 OpenAI 兼容接口，以 Adapter 隔离 Claude、DeepSeek 与 OpenAI；通过超时、并发闸门、熔断和 Fallback 控制上游故障，使用注册 JSON Schema + Pydantic 二次验证拦截非法输出。}
+  \item {\fontsize{9}{12}\selectfont\textbf{RAG 与安全边界：}按 marketplace、版本、生效时间和权限范围检索运营知识，要求回答附带来源引用或拒答；Listing、改价和广告动作仅生成建议或草稿，保留 Human-in-the-Loop。}
 
-  \item {\fontsize{9}{12}\selectfont\textbf{Listing 决策 Agent：}使用 LangGraph 读取带 source\_id/observed\_at 的竞品证据，并发生成三版、每版五条德语卖点；以确定性规则检查禁词、标题和事实依据，结合 checkpoint 保证重复 request\_id 可恢复且不重复执行。}
-
-  \item {\fontsize{9}{12}\selectfont\textbf{RAG/MCP 与人审：}实现按版本、生效时间、marketplace 和 access scope 过滤的 RAG，答案必须返回引用或拒答；MCP 仅暴露四个只读/草稿工具，Listing、改价与广告操作始终保留 Human-in-the-Loop。}
-
-  \item {\fontsize{9}{12}\selectfont\textbf{协作与工程交付：}实现飞书 Bitable search + update/create 幂等同步、事件验签与 trace 留痕；Docker Compose 编排 Gateway/PostgreSQL/Redis/Worker，50 个离线测试覆盖重试、事务回滚、Fallback、非法输出、权限及 HITL。}
+  \item {\fontsize{9}{12}\selectfont\textbf{工程验证：}使用 Docker Compose 编排 Gateway、PostgreSQL、Redis 与 Worker，以离线测试覆盖接口重试、幂等同步、模型降级、非法输出和 Human-in-the-Loop 边界。}
 \end{itemize}
 
 \vspace{1pt}
