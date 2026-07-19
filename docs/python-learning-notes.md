@@ -276,3 +276,519 @@ sales_daily_key = (
 不要把 `import_batch_id`、CSV 行号、导入时间放进幂等键：它们每次导入都会变化，会让同一业务记录被误判为不同记录。`currency`、`revenue`、`units` 等是这条记录的属性，不是它的身份；数值修正后应更新原记录，而不是生成新记录。
 
 可以这样自测：如果同一份文件重跑，键必须完全相同；如果店铺、站点、日期或 SKU 任一业务维度变化，键必须不同。
+
+## 14. `git fetch` 的作用
+
+`git fetch` 从远程仓库下载新的提交记录、分支和标签信息到本地 Git 数据库，但不会修改当前分支、工作区文件或暂存区。
+
+例如：
+
+```bash
+git fetch origin
+```
+
+执行后可以查看远程分支的最新状态，例如 `origin/main`，再决定是否合并。它适合在修改代码前了解远程是否已有新提交。
+
+与 `git pull` 的区别是：`git pull` 通常等于先 `git fetch`，再把远程变更合并或变基到当前分支，因此可能改变本地文件并产生冲突；`git fetch` 只更新远程跟踪信息，本地工作文件保持不变。
+
+### `origin`、分支与 GitHub 默认分支
+
+`origin` 不是分支，而是远程仓库的默认别名。执行 `git clone` 时，Git 通常把克隆来源命名为 `origin`；这个名字可以改，也可以配置多个远程仓库。
+
+```text
+origin          远程仓库的别名
+main            本地分支
+origin/main     本地保存的“远程 main 分支状态”
+```
+
+当前仓库中，`origin` 指向 GitHub 仓库 `binn-997/ecommerce-agent-learning`，并且 `origin/HEAD -> origin/main` 表示远程默认分支是 `main`。
+
+`master` 曾经是很多 GitHub 仓库的默认分支名；GitHub 在 2020 年后新建仓库通常默认使用 `main`。这与 `origin` 无关：`origin` 是远程名称，`main` 或 `master` 才是默认分支名称。
+
+## 15. 用 SP-API、Ads API、Skill 和 MCP 做日报解读是否可行
+
+可行，但它们应该各司其职：SP-API 获取销售和流量报表；Amazon Ads API 获取广告报表；MCP 把已授权、已校验的数据封装成窄的只读查询工具；Skill 或 LLM 只负责组织查询、解释结果和生成待审建议。
+
+推荐链路：
+
+```text
+定时任务
+  -> SP-API / Ads API 异步创建、轮询、下载报表
+  -> Raw 数据留存、质量校验、标准化、幂等写入
+  -> 销售和广告事实表
+  -> MCP 只读工具
+  -> Skill/LLM 生成带来源、时间窗和数据新鲜度的日报解读
+  -> 人工审核建议
+```
+
+不要让每个聊天请求直接调用真实 API：报表生成是异步任务，有限流和凭据风险；同一个问题被反复询问会重复请求；模型也不应接触 refresh token。应由后台任务拉取并缓存，MCP 读取事实表。
+
+本项目现状：
+
+- `spapi.py` 能请求 Sales & Traffic Business Report；该报表提供按日期和 ASIN/SKU 粒度的销售、收入、流量等数据，但需要相应的 Brand Analytics 权限和账号条件。
+- `ads.py` 能生成 Sponsored Products campaign 日报、轮询、下载并计算 ACOS、CTR、CVR、CPC、TACOS，还提供只生成待审建议的异常解释。
+- `mcp_server.py` 当前只有 `get_sales_metrics`、库存风险、政策检索和 Listing 草稿四个工具；尚未暴露广告读取工具。
+
+合理的新 MCP 工具可以是：
+
+```text
+get_advertising_metrics(start, end, campaign_id?)  -> ads:read
+explain_advertising_anomaly(start, end, campaign_id) -> ads:read
+```
+
+它们必须由可信认证上下文注入 `seller_id` 和 `marketplace_id`，返回 `report_id`、统计时间窗、归因窗口、数据更新时间和原始指标。广告结论先由确定性代码计算，LLM 只把证据组织成人能读懂的假设，不能自动改 bid、预算或广告状态。
+
+销售报表和广告报表合并解读时必须对齐：店铺/站点、SKU 或 ASIN 粒度、日期、币种和广告归因窗口。特别是项目当前广告数据使用 14 天归因销售，最近 14 天的 ACOS 不应被当作最终结论。
+
+## 16. 单元 3：生产级 Async SP-API 客户端
+
+`spapi.py` 的目标不是“把 HTTP 请求写成 async”，而是在网络等待、多人并发、Amazon 限流和异步报表生成时，仍然得到可控、可解释的结果。
+
+### Async 的基本含义
+
+同步代码遇到网络请求会停在原地等待；异步代码在 `await` 网络、锁、缓存或 `asyncio.sleep()` 时，把执行权交回事件循环，其他协程可以继续运行。协程是可暂停、可恢复的函数；事件循环负责在它们之间切换。
+
+```python
+response = await self.http.request(...)
+```
+
+表示“请求已经发出，等待响应时去运行别的协程”。它不等于多线程，也不会自动让 CPU 计算变快；它主要提高 I/O 等待期间的并发能力。
+
+不要在 async 函数中使用 `time.sleep()`：它会堵住事件循环，所有协程都无法继续。应使用 `await asyncio.sleep()`。
+
+### 四条独立机制
+
+```text
+认证：access_token() -> 双检锁 -> LWA token
+限流：operation -> AsyncTokenBucket -> 等待令牌
+重试：request() -> 分类错误 -> 等待后重试或抛错
+报表：create -> poll -> document -> download -> 解压/校验
+```
+
+#### 认证：双检锁
+
+`access_token()` 先在锁外检查缓存 token 是否距离过期还超过 60 秒；有效则直接返回，避免每次都抢锁。过期时才进入 `async with self._token_lock`。进入锁后再检查一次，因为等待锁的期间，另一个协程可能已经刷新成功。这样 20 个协程同时发现过期时，只有一个会发 LWA 请求，其他协程复用新 token。
+
+即使异步通常在单线程运行，也需要锁：协程会在 `await` 处交错执行；没有锁时，多个协程可能同时读到“token 已过期”，并发刷新造成 token stampede。
+
+#### 限流：令牌桶
+
+`AsyncTokenBucket` 维护 `tokens`、`rate`、`capacity` 和上次更新时间。每次 `acquire()` 先按经过时间补充 token；有 token 就扣一个并继续，没有就计算还需等待多久，并在锁外 `await asyncio.sleep(delay)`。锁外等待保证其他协程仍能检查或使用桶。
+
+`time.monotonic()` 只会向前递增，系统时间被手动调整也不会导致等待时间倒退。Reports、Orders、default 各自有桶，因为不同 API operation 的限流额度可能不同；一个慢报表不应拖住 Orders 请求。响应头 `x-amzn-RateLimit-Limit` 会更新当前桶的速率。
+
+#### 重试：只重试临时故障
+
+`request()` 是所有 API 调用的统一入口。每次尝试依次执行：获取限流令牌、确保 token 有效、发 HTTP 请求、读取限流响应头、决定返回/重试/抛错。
+
+- `429`、`500/502/503/504`、网络传输错误可能是暂时问题，可重试。
+- `400` 通常是参数错误，`403` 通常是权限或授权错误；等待不会修复它们，因此立即失败。
+- 到达 `max_attempts` 后也必须停止，避免无限请求。
+
+429 优先遵守 `Retry-After`；没有时采用 full jitter，即在逐次增大的等待上限内随机等待。随机化能避免很多客户端同时重试，造成第二波拥堵。异常只保留 status、operation 或 request ID 等诊断上下文，不应泄漏 token。
+
+#### 报表：异步状态机
+
+创建报表不是一次请求：POST 成功只返回 `reportId`，表示 Amazon 开始后台生成。`wait_for_report()` 周期性查询状态：`DONE` 时获得 `reportDocumentId`；`CANCELLED` 或 `FATAL` 明确失败；超过 deadline 抛 `TimeoutError`。等待轮询间隔时使用 `await self.sleep(poll_interval)`，因此不会阻塞其他任务。
+
+拿到 document 后，`download_report()` 先取得下载 URL，再下载内容；若元数据标记 GZIP 就解压，最后交给 `SalesAndTrafficReport.model_validate_json()`。这一步把“不可信的外部 JSON”变成满足 Pydantic 契约的内部数据。
+
+### 缓存与资源关闭
+
+`get_sales_and_traffic_report()` 先用 seller、marketplace、report type、日期和 options 生成稳定缓存键。命中则不重复创建报表；这些维度缺一不可，否则可能跨店铺、跨站点或跨粒度读到错误结果。当前 `InMemoryReportCache` 只适合离线演示；多 worker 生产环境需要 Redis 或数据库的共享锁/唯一约束。
+
+`async with AsyncSPAPIClient(...)` 会在退出时关闭由客户端自己创建的 `httpx.AsyncClient`，避免连接泄漏；若调用方传入共享 `http` 客户端，客户端不会擅自关闭它。
+
+### 最小复述模板
+
+“这个客户端用 async 在网络和轮询等待期间让其他协程继续运行；用双检锁防止并发 token 刷新；用按 operation 隔离的令牌桶遵守限流；只对临时错误做有限、带抖动的重试；把报表作为 create、poll、download、校验的状态机处理，并用完整窗口键缓存结果。”
+
+## 17. LWA 请求是什么
+
+LWA 是 `Login with Amazon` 的缩写。LWA 请求不是获取销售数据，而是向 Amazon 的认证服务请求一个短期的 `access_token`，之后 SP-API 请求使用这个 token 证明调用者已获得授权。
+
+当前代码会向：
+
+```text
+https://api.amazon.com/auth/o2/token
+```
+
+发送类似下面的表单参数：
+
+```text
+grant_type=refresh_token
+refresh_token=...
+client_id=...
+client_secret=...
+```
+
+几个凭据的职责不同：
+
+- `client_id`：应用的身份标识。
+- `client_secret`：应用的秘密凭据，不能写入日志或提交到 Git。
+- `refresh_token`：长期授权凭据，用来换取新的短期 access token。
+- `access_token`：短期访问凭据，放入后续 SP-API 请求头，例如 `x-amz-access-token`。
+
+流程可以记成：
+
+```text
+refresh_token + client credentials
+  -> LWA token endpoint
+  -> access_token
+  -> SP-API request header
+  -> Amazon API response
+```
+
+`refresh_token` 通常不应该直接放进业务 API 请求；它只用于刷新 token。`access_token` 也会过期，所以客户端缓存它，并在距离过期 60 秒以内重新刷新。多个协程同时刷新时，`_token_lock` 保证只发送一次 LWA 刷新请求。
+
+## 18. 单元 4：事务、回滚、Upsert 和可追溯管道
+
+这一单元解决一个实际问题：一批数据导入过程中途失败时，不能留下半批数据，也不能让系统误以为整批已经完成。
+
+可以把它类比成银行转账：扣款和入账必须一起成功；如果入账失败，扣款也要撤销。数据库中的“事务”就是这个原子边界。
+
+### 一次导入做了什么
+
+`DataPipeline.ingest_sales_metrics()` 的顺序是：
+
+```text
+BEGIN
+  保存原始 payload、hash 和 trace
+  逐行 upsert 标准化指标
+  更新同步 cursor
+COMMIT
+```
+
+代码中的关键部分是：
+
+```python
+async with self.transaction() as tx:
+    await tx.store_raw(...)
+    for row in rows:
+        await tx.upsert_metric(row, trace_id)
+    await tx.update_cursor(...)
+```
+
+`async with` 表示进入事务上下文；正常离开时提交，内部任何异常时回滚。这里的 `await` 是因为原始数据、指标和游标可能最终写入异步数据库。
+
+如果第 50 行失败，正确结果应该是：原始 payload、前 49 行指标和 cursor 全部不存在或恢复到事务开始前的状态。否则可能出现“事实表只写了 49 行，但 cursor 已经推进到最后一天”的严重错误，下一次同步就可能跳过未写入的数据。
+
+### 回滚如何实现
+
+`InMemoryPipelineRepository` 是测试用的内存仓库。进入事务前，它用 `copy.deepcopy()` 保存 `raw_payloads`、`metrics` 和 `cursors` 的快照；发生异常时恢复快照，模拟 PostgreSQL 的 rollback。
+
+`AsyncPGPipelineRepository` 则使用真实数据库的：
+
+```python
+async with self.pool.acquire() as connection:
+    async with connection.transaction():
+        ...
+```
+
+内存实现是测试替身，PostgreSQL 实现才是生产存储；两者需要保持相同的可观察行为。
+
+### Upsert 是什么
+
+Upsert = `INSERT` + `UPDATE`：不存在就插入，已存在就更新。
+
+项目的指标使用 `(metric_date, sku)` 作为业务键：
+
+```sql
+ON CONFLICT (metric_date, sku) DO UPDATE SET
+    units_sold = EXCLUDED.units_sold,
+    revenue = EXCLUDED.revenue,
+    sessions = EXCLUDED.sessions
+```
+
+同一份 Amazon 报表重跑时，数据库不会新增重复行，而是更新同一个业务键。这就是幂等导入。
+
+`raw_imports` 使用 `payload_hash` 作为主键；相同原始 payload 再次导入时，只更新重放时间。`sync_cursors` 使用 `(seller_id_hash, operation)` 标识某个卖家的某种同步进度。
+
+### 为什么需要 Protocol
+
+`PipelineTransaction` 只规定三项能力：
+
+```text
+store_raw()
+upsert_metric()
+update_cursor()
+```
+
+`DataPipeline` 只依赖这个协议，不需要知道底层是内存字典、PostgreSQL、asyncpg 还是测试 Fake。这样业务编排和数据库驱动解耦，测试可以快速验证事务行为，生产环境再替换成真实数据库。
+
+### 可追溯是什么意思
+
+一次导入不是只保存结果，还要保留“结果从哪里来”：
+
+```text
+trace_id
+  -> request_id
+  -> seller_id_hash + operation
+  -> date_window
+  -> raw payload SHA-256
+  -> 标准指标行
+```
+
+`trace_id` 用于串起一次业务运行，`request_id` 用于定位 Amazon 请求，`payload_hash` 用于确认原始输入是否相同。seller ID 使用 hash 是为了保留关联能力，同时避免把原始租户标识直接写入日志。
+
+### 为什么不是 exactly-once
+
+网络系统很难保证“请求只执行一次”。例如数据库已经提交成功，但客户端在收到成功响应前断网，调用方无法确定是否成功，只能重试。
+
+更可靠的实际策略是：
+
+```text
+至少一次投递
+  + 稳定幂等键
+  + 数据库事务
+  = 重试不会产生重复或半批结果
+```
+
+这不是承诺请求只执行一次，而是保证重复执行后的最终业务状态正确。
+
+## 19. PostgreSQL 是异步数据库吗
+
+严格来说，不应简单说 PostgreSQL 是“异步数据库”。PostgreSQL 是数据库服务器；异步或同步主要描述 Python 程序使用什么客户端驱动与它通信。
+
+```text
+Python 业务代码
+  -> asyncpg 异步驱动
+  -> PostgreSQL 数据库服务器
+```
+
+项目中的：
+
+```python
+async with self.pool.acquire() as connection:
+    async with connection.transaction():
+        await connection.execute(...)
+```
+
+表示 Python 在等待数据库连接、事务和 SQL 执行结果时，可以把控制权交给事件循环。`asyncpg` 是异步 PostgreSQL 驱动，所以这里需要 `async` 和 `await`。
+
+如果使用同步驱动，写法可能是：
+
+```python
+connection = sync_driver.connect(...)
+connection.execute(...)
+```
+
+这时当前线程会阻塞等待数据库返回，但数据库服务器本身仍然可以同时处理其他连接。换句话说：PostgreSQL 支持并发处理，不等于每个客户端都必须异步；异步主要是客户端应用如何等待数据库 I/O 的选择。
+
+## 20. Async/await 写法与协程状态
+
+### 最小例子
+
+```python
+import asyncio
+
+
+async def fetch_sales() -> str:
+    await asyncio.sleep(1)  # 模拟网络等待
+    return "sales data"
+
+
+async def main() -> None:
+    result = await fetch_sales()
+    print(result)
+
+
+asyncio.run(main())
+```
+
+含义是：
+
+- `async def` 定义协程函数；调用 `fetch_sales()` 时先得到协程对象，不会立即执行函数体。
+- `await fetch_sales()` 才会等待它执行完成，并拿到返回值。
+- `asyncio.run(main())` 创建事件循环、运行顶层协程，结束后关闭事件循环。
+- `await` 只能在 `async def` 内使用。
+
+### 顺序执行与并发等待
+
+下面两个任务会依次等待，总耗时约为 3 秒：
+
+```python
+async def main() -> None:
+    await asyncio.sleep(1)
+    await asyncio.sleep(2)
+```
+
+使用 `asyncio.gather()` 可以让两个 I/O 等待同时开始，总耗时约为 2 秒：
+
+```python
+async def job(name: str, seconds: float) -> str:
+    await asyncio.sleep(seconds)
+    return f"{name} done"
+
+
+async def main() -> None:
+    results = await asyncio.gather(
+        job("sales", 1),
+        job("ads", 2),
+    )
+    print(results)
+```
+
+这里不是两个 CPU 线程同时计算，而是一个事件循环在两个任务等待时交替推进。适合网络请求、数据库查询、报表轮询，不适合直接加速大量 CPU 计算。
+
+### `create_task()`：先启动，稍后等待
+
+```python
+async def main() -> None:
+    sales_task = asyncio.create_task(job("sales", 1))
+    ads_task = asyncio.create_task(job("ads", 2))
+
+    print("两个任务已经启动")
+    sales = await sales_task
+    ads = await ads_task
+    print(sales, ads)
+```
+
+`create_task()` 把协程安排到事件循环中执行，并返回一个 Task。Task 不能被遗忘：必须最终 `await` 它，或者明确取消并处理异常，否则可能产生未处理异常或资源泄漏。一次性等待多个任务时，通常优先使用 `gather()`。
+
+### 异步上下文管理器
+
+数据库连接和 HTTP 客户端常写成：
+
+```python
+async with client:
+    result = await client.fetch()
+```
+
+它相当于“进入时准备资源，退出时释放资源”。项目中的 `async with self.transaction()` 就是在进入时开始事务，正常退出时提交，异常退出时回滚。
+
+### 协程状态图
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created: 调用 async 函数
+    Created --> Scheduled: create_task 或交给 gather
+    Created --> Running: await 协程
+    Scheduled --> Running: 事件循环调度
+    Running --> Waiting: await 网络/数据库/锁/定时器
+    Waiting --> Running: 等待条件完成
+    Running --> Done: return
+    Running --> Failed: 未处理异常
+    Running --> Cancelled: task.cancel()
+    Done --> [*]
+    Failed --> [*]
+    Cancelled --> [*]
+```
+
+关键点是：`await` 不是“永远停住”，而是当前协程暂时进入 `Waiting`，事件循环可以运行其他任务；等待完成后，它会回到 `Running`，从 `await` 后面继续执行。
+
+### 常见错误
+
+```python
+async def bad() -> None:
+    time.sleep(2)  # 错误：阻塞事件循环
+```
+
+应改成：
+
+```python
+async def good() -> None:
+    await asyncio.sleep(2)
+```
+
+还要避免只调用协程但不等待：
+
+```python
+fetch_sales()  # 只创建协程对象，函数体可能根本没有执行
+```
+
+应该写成：
+
+```python
+await fetch_sales()
+```
+
+或：
+
+```python
+task = asyncio.create_task(fetch_sales())
+await task
+```
+
+## 21. `asyncio.gather()` 的使用准则
+
+`gather()` 适合“多个彼此独立的异步任务，并发等待全部结果”的场景：
+
+```python
+results = await asyncio.gather(task_a(), task_b(), task_c())
+```
+
+使用前检查：
+
+- 任务之间没有先后依赖；如果 B 必须使用 A 的结果，就按顺序 `await A` 再 `await B`。
+- 任务主要在等待网络、数据库、模型或定时器，而不是做大量 CPU 计算。
+- 并发数量不会突破对方 API 的限流、连接池或本地资源上限。
+- 任务可以接受统一的错误处理；如果每个任务需要完全不同的重试或补偿流程，应拆开处理。
+
+默认情况下，某个任务抛异常时，`gather()` 会把异常传给调用方；其他已经开始的任务不应被假设为自动取消。需要把异常当作结果收集时，可以写：
+
+```python
+results = await asyncio.gather(
+    task_a(),
+    task_b(),
+    return_exceptions=True,
+)
+for result in results:
+    if isinstance(result, Exception):
+        print("单个任务失败", result)
+```
+
+如果任务很多，应增加并发上限：
+
+```python
+limit = asyncio.Semaphore(5)
+
+
+async def bounded_fetch(item: str) -> str:
+    async with limit:
+        return await fetch(item)
+
+
+results = await asyncio.gather(*(bounded_fetch(item) for item in items))
+```
+
+### 本项目已经使用了 `gather()`
+
+- `listing_agent.py` 的 `generate_three_versions()` 并发生成三个互相独立的 Listing 版本。三个版本都需要等待 LLM 网络响应，互相不依赖，所以适合 `gather()`。
+- `tests/test_spapi.py` 用 `gather()` 模拟 20 个协程同时调用 `access_token()`，验证双检锁确实只触发一次 LWA 刷新。
+
+### 为什么报表流程没有处处使用 `gather()`
+
+SP-API 报表是有依赖的状态机：必须先创建报表，拿到 `reportId` 后才能轮询；只有 `DONE` 后拿到 `documentId`，才能下载和校验。因此下面的步骤必须顺序执行：
+
+```text
+create -> poll -> document -> download -> validate
+```
+
+重试也必须对同一个请求逐次等待和判断，不能用 `gather()` 把同一个报表请求无限并发出去。Amazon 的限流桶会控制请求速度，但业务代码仍需要限制并发和正确处理失败。
+
+因此，本项目使用 `gather()` 的原则是：**独立任务并发，存在数据依赖的步骤顺序执行；并发前先考虑限流、失败语义和资源上限。**
+
+## 22. Multi-LLM Gateway 的当前 API 评估
+
+网关对外暴露 `/v1/chat/completions` 是兼容层设计，仍可保留，方便现有调用方继续使用 OpenAI 风格的 `messages`、`choices` 和 `response_format`。但是 provider 适配层不能把“OpenAI 兼容”误认为“所有 provider 的能力和参数完全相同”。
+
+当前代码已经按以下边界完成改造：
+
+1. **OpenAI**：对外仍是 `/v1/chat/completions`，内部 `OpenAIResponsesProvider` 使用 `/v1/responses`。Responses 的输入为 `input`，结构化输出使用 `text.format`，结果从 typed `output` 中提取 `output_text`。
+2. **Anthropic**：`AnthropicProvider` 使用 Messages API 原生 `output_config.format` + `json_schema`，并保留本地 Pydantic 校验作为第二道防线。
+3. **DeepSeek**：`DeepSeekChatProvider` 使用 `/chat/completions` 和 `response_format={"type": "json_object"}`，通过 schema 提示约束内容，再执行本地 Pydantic 校验。
+4. **模型默认值**：DeepSeek 已从即将停止的 `deepseek-chat` 更新为 `deepseek-v4-flash`；OpenAI 使用当前平衡质量与成本的 `gpt-5.6-terra` 默认值，仍允许环境变量覆盖。
+
+本次实现保留的协议边界：
+
+```text
+保持外部 /v1/chat/completions 契约
+  -> 新增 OpenAIResponsesProvider
+  -> 拆分 DeepSeekChatProvider
+  -> Anthropic 使用 output_config.format
+  -> 增加三家 provider 的 request/response fixture 测试
+  -> 通过配置显式选择各 provider 的模型
+```
+
+不要把 provider 特有字段泄漏到公共 `ChatCompletionRequest`。公共模型继续表达业务需要（消息、温度、最大输出、已注册 schema）；各 provider adapter 负责把它转换为 OpenAI Responses、Anthropic Messages 或 DeepSeek Chat Completions 的具体请求。

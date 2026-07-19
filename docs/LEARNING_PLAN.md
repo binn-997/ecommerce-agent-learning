@@ -79,7 +79,7 @@
 
 **编码任务：**
 
-- 完成 `/v1/chat/completions`，Provider Adapter 隔离 Anthropic 与 OpenAI-compatible 协议。
+- 完成 `/v1/chat/completions`，Provider Adapter 隔离 Anthropic Messages、DeepSeek Chat 与 OpenAI Responses 协议。
 - 路由别名不绑定易过时的模型 ID；模型 ID 由环境变量配置。
 - 主链 Claude → DeepSeek → OpenAI；超时、5xx、非法 JSON 进入 fallback，认证/配额错误告警人工。
 - 只允许服务端注册的 Schema；Listing 用 `ListingVariant.model_json_schema()` 请求并用 Pydantic 二次解析。

@@ -8,9 +8,12 @@ import httpx
 from fastapi.testclient import TestClient
 
 from amazon_ai_platform.llm_gateway import (
+    AnthropicProvider,
     ChatCompletionRequest,
+    DeepSeekChatProvider,
     Message,
     ModelRouter,
+    OpenAIResponsesProvider,
     ProviderResult,
     RegisteredSchema,
     RouteTarget,
@@ -40,6 +43,122 @@ class FakeProvider:
         return ProviderResult(
             content=self.result, model=model, prompt_tokens=10, completion_tokens=20
         )
+
+
+def structured_request() -> ChatCompletionRequest:
+    return ChatCompletionRequest(
+        messages=[Message(role="user", content="generate")],
+        response_format=RegisteredSchema(name="listing_variant"),
+    )
+
+
+def test_registered_schema_is_strict_for_provider_output() -> None:
+    schema = ModelRouter._schema(structured_request())
+    assert schema is not None
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == list(schema["properties"])
+
+
+def test_openai_provider_uses_responses_api_and_text_format() -> None:
+    async def scenario() -> ProviderResult:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/v1/responses"
+            body = json.loads(request.content)
+            assert body["input"] == [{"role": "user", "content": "generate"}]
+            assert body["store"] is False
+            assert body["max_output_tokens"] == 1500
+            assert body["text"]["format"]["type"] == "json_schema"
+            assert body["text"]["format"]["strict"] is True
+            return httpx.Response(
+                200,
+                json={
+                    "model": "gpt-5.6-terra",
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": json.dumps(VALID_VARIANT),
+                                }
+                            ],
+                        }
+                    ],
+                    "usage": {"input_tokens": 11, "output_tokens": 22},
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            provider = OpenAIResponsesProvider("secret", http)
+            schema = ModelRouter._schema(structured_request())
+            return await provider.complete(
+                structured_request(), model="gpt-5.6-terra", schema=schema
+            )
+
+    result = asyncio.run(scenario())
+    assert json.loads(result.content) == VALID_VARIANT
+    assert (result.prompt_tokens, result.completion_tokens) == (11, 22)
+
+
+def test_anthropic_provider_uses_native_output_config() -> None:
+    async def scenario() -> ProviderResult:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/v1/messages"
+            body = json.loads(request.content)
+            assert body["output_config"]["format"]["type"] == "json_schema"
+            assert (
+                body["output_config"]["format"]["schema"]["additionalProperties"]
+                is False
+            )
+            assert "Return only JSON" not in body["system"]
+            return httpx.Response(
+                200,
+                json={
+                    "model": "claude-sonnet-latest",
+                    "content": [{"type": "text", "text": json.dumps(VALID_VARIANT)}],
+                    "usage": {"input_tokens": 12, "output_tokens": 24},
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            provider = AnthropicProvider("secret", http)
+            schema = ModelRouter._schema(structured_request())
+            return await provider.complete(
+                structured_request(), model="claude-sonnet-latest", schema=schema
+            )
+
+    result = asyncio.run(scenario())
+    assert json.loads(result.content) == VALID_VARIANT
+    assert (result.prompt_tokens, result.completion_tokens) == (12, 24)
+
+
+def test_deepseek_provider_uses_json_object_mode() -> None:
+    async def scenario() -> ProviderResult:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/chat/completions"
+            body = json.loads(request.content)
+            assert body["response_format"] == {"type": "json_object"}
+            assert body["messages"][0]["role"] == "system"
+            assert "JSON Schema" in body["messages"][0]["content"]
+            return httpx.Response(
+                200,
+                json={
+                    "model": "deepseek-v4-flash",
+                    "choices": [{"message": {"content": json.dumps(VALID_VARIANT)}}],
+                    "usage": {"prompt_tokens": 13, "completion_tokens": 26},
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            provider = DeepSeekChatProvider("secret", http)
+            schema = ModelRouter._schema(structured_request())
+            return await provider.complete(
+                structured_request(), model="deepseek-v4-flash", schema=schema
+            )
+
+    result = asyncio.run(scenario())
+    assert json.loads(result.content) == VALID_VARIANT
+    assert (result.prompt_tokens, result.completion_tokens) == (13, 26)
 
 
 def test_router_falls_back_and_validates_pydantic_schema() -> None:

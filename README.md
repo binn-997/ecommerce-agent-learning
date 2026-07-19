@@ -12,7 +12,7 @@
 1. **销售与流量数据链路**：LWA token 自动刷新 → 分操作令牌桶 → 429/5xx 全抖动重试 → 异步报表轮询 → GZIP 解压 → Pydantic 校验。
 2. **Listing 决策链路**：带来源的竞品数据 → LangGraph 三节点 → 并发生成三版德语五点描述 → 确定性规则检查 → 人工审核草稿。
 3. **协作链路**：订单幂等同步 Bitable → 销售/库存卡片 → `/选品` 指令 → AI 分析 → trace ID 留痕。
-4. **模型基础设施**：OpenAI 兼容的 `/v1/chat/completions` → Claude / DeepSeek / OpenAI 降级链 → 熔断与并发上限 → 服务端注册的 Pydantic Schema 校验。
+4. **模型基础设施**：OpenAI 兼容的 `/v1/chat/completions` → Claude Messages / DeepSeek Chat / OpenAI Responses 独立 adapter → 熔断与并发上限 → 原生结构化输出 + Pydantic 二次校验。
 
 系统**不会**自动发布 Listing、改价、暂停广告或下采购单。这些动作必须走人工审批。
 
@@ -114,7 +114,7 @@ curl http://127.0.0.1:8000/health
 | Data Engine | `amazon_ai_platform/spapi.py`、`pipeline.py` | `AsyncSPAPIClient`、窗口缓存、事务 raw/upsert/cursor、回滚、request ID/文件哈希 trace |
 | Ads Engine | `amazon_ai_platform/ads.py` | Reporting v3 create/poll/GZIP、ACOS/CTR/CVR/CPC/TACOS、低样本与 14 天归因保护、只生成待审建议 |
 | Business Hub | `amazon_ai_platform/feishu.py` | token 缓存、卡片纯函数、Bitable search + update/create 幂等写、订单同步、事件验签 token、选品指令 |
-| Brain Gateway | `amazon_ai_platform/llm_gateway.py` | 标准接口、多 Provider Adapter、fallback、circuit breaker、并发闸门、注册 Schema + Pydantic 二次校验 |
+| Brain Gateway | `amazon_ai_platform/llm_gateway.py` | 标准接口、OpenAI Responses / Anthropic Messages / DeepSeek Chat adapter、fallback、circuit breaker、并发闸门、注册 Schema + Pydantic 二次校验 |
 | Prompt/RAG | `amazon_ai_platform/prompts.py`、`rag.py` | Prompt 版本/Schema、40 条跨类目评测、版本/生效时间/权限检索、50 条检索与拒答评测、引用 |
 | Decision Engine | `amazon_ai_platform/listing_agent.py` | 三节点图、三版五点、75 字符 Title + 125 字符 Item Highlight、事实来源、重试、checkpoint、德国站规则与人审记录 |
 | MCP | `amazon_ai_platform/mcp_server.py` | 官方 SDK 四个最小工具；seller/marketplace 由认证上下文注入，无发布/改价/广告写工具 |

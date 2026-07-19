@@ -498,12 +498,14 @@ pytest tests/test_pipeline.py::test_replay_is_idempotent_and_trace_reaches_raw_r
 
 ```text
 HTTP contract：ChatCompletionRequest / ChatCompletionResponse
-Provider adapter：AnthropicProvider / OpenAICompatibleProvider
+Provider adapter：AnthropicProvider / DeepSeekChatProvider / OpenAIResponsesProvider
 Routing policy：ModelRouter / RouteTarget / CircuitState
 Web application：create_app / app_from_environment
 ```
 
 Provider 特有字段只应出现在 adapter。业务方只使用 OpenAI 风格消息、服务端注册 Schema 和统一响应。
+
+当前三种 provider 协议并不相同：OpenAI 使用 Responses API 的 `input`、`text.format` 和 typed `output`；Anthropic 使用 Messages API 的 `output_config.format`；DeepSeek 使用 Chat Completions 的 `json_object` 模式。网关对外仍保留 `/v1/chat/completions` 兼容契约，adapter 负责协议翻译，Pydantic 负责第二次本地校验。
 
 ### 8.2 Structured Output 的三层保证
 
