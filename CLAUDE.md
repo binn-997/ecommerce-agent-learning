@@ -57,6 +57,6 @@ CI（`.github/workflows/ci.yml`，Python 3.12）运行 `ruff check amazon_ai_pla
 - Agent 只产出草稿/建议：**不得**自动发布 Listing、改价、操作广告、创建采购单或群发消息——高风险动作一律 human-in-the-loop。
 - 测试与 CI 不依赖 Amazon、飞书、LLM 真实账号；测试数据必须是 synthetic，不含真实订单和买家 PII。
 - 密钥只从 `.env`/环境变量读取；新增环境变量同步更新 `.env.example`（只放空值或安全默认值）。
-- 开工前用 `git branch --show-current` 确认分支（AGENTS.md §12 写的 `codex/new` 已过期，目前在 `main`）；只暂存本任务相关路径，不用 `git add .`；未经用户要求不 push、不建 PR。
-- 文档统一简体中文（命令、类型名、API 字段保留英文）；行为变更需按 AGENTS.md §11 同步 `README.md`、`docs/LEARNING_PLAN.md`、`docs/DOCKER_BEGINNER_GUIDE.md`。
+- 开工前用 `git branch --show-current` 确认分支；只暂存本任务相关路径，不用 `git add .`；未经用户要求不 push、不建 PR。
+- 文档统一简体中文（命令、类型名、API 字段保留英文）；行为变更需按 AGENTS.md §11 同步 `README.md`、`docs/PROJECT_OVERVIEW.md` 和相关运行记录。
 - 未经真实联调验证的能力，不得在文档中写成已完成。
